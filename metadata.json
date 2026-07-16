@@ -1,0 +1,6 @@
+{
+  "name": "Trading Plan & Performance Journal",
+  "description": "A minimalist, high-performance trading plan and journal dashboard featuring setup tracking, interactive PnL calendars, execution metrics, and AI-driven performance coaching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

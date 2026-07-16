@@ -1,0 +1,90 @@
+{
+  "version": "1.0",
+  "collections": {
+    "users": {
+      "schema": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "subcollections": {
+        "accounts": {
+          "schema": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "broker": { "type": "string" },
+            "initialBalance": { "type": "number" },
+            "currency": { "type": "string" }
+          }
+        },
+        "trades": {
+          "schema": {
+            "id": { "type": "string" },
+            "accountId": { "type": "string" },
+            "date": { "type": "string" },
+            "time": { "type": "string" },
+            "asset": { "type": "string" },
+            "setup": { "type": "string" },
+            "direction": { "type": "string" },
+            "entryPrice": { "type": "number" },
+            "exitPrice": { "type": "number" },
+            "size": { "type": "number" },
+            "sl": { "type": "number" },
+            "tp": { "type": "number" },
+            "pnl": { "type": "number" },
+            "status": { "type": "string" },
+            "session": { "type": "string" },
+            "mistakes": { "type": "array", "items": { "type": "string" } },
+            "notes": { "type": "string" },
+            "htfScreenshot": { "type": "string" },
+            "ltfScreenshot": { "type": "string" }
+          }
+        },
+        "plans": {
+          "schema": {
+            "id": { "type": "string" },
+            "date": { "type": "string" },
+            "asset": { "type": "string" },
+            "bias": { "type": "string" },
+            "fourHour": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" },
+                "bias": { "type": "string" },
+                "imageUrl": { "type": "string" }
+              }
+            },
+            "oneHour": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" },
+                "bias": { "type": "string" },
+                "imageUrl": { "type": "string" }
+              }
+            },
+            "fifteenMin": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" },
+                "bias": { "type": "string" },
+                "imageUrl": { "type": "string" }
+              }
+            },
+            "fiveMin": {
+              "type": "object",
+              "properties": {
+                "text": { "type": "string" },
+                "bias": { "type": "string" },
+                "imageUrl": { "type": "string" }
+              }
+            },
+            "macroNotes": { "type": "string" },
+            "triggers": { "type": "string" },
+            "status": { "type": "string" },
+            "createdAt": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
