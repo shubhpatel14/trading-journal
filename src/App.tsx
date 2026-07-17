@@ -659,7 +659,7 @@ export default function App() {
     <div className="clay-scene min-h-screen flex flex-col text-clay-foreground antialiased font-sans">
       
       {/* Upper Navigation Header */}
-      <header className="sticky top-0 z-50 px-3 py-3">
+      <header className="relative z-30 px-3 py-3">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="clay-surface flex flex-wrap justify-between items-center gap-3 px-4 py-3 sm:px-5">
             
@@ -1174,7 +1174,7 @@ export default function App() {
       )}
 
       {/* Mobile Sticky Tab bar */}
-      <div className="lg:hidden clay-surface mx-4 mt-2 py-3 px-4 sticky top-[92px] z-40 overflow-x-auto flex gap-2 scrollbar-none">
+      <div className="lg:hidden clay-surface mx-4 mt-2 py-3 px-4 relative z-20 overflow-x-auto flex gap-2 scrollbar-none">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'plans', label: 'Plans', icon: FileText },
