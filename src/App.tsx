@@ -656,32 +656,32 @@ export default function App() {
     : activeAccount?.currency || 'USD';
 
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col text-slate-800 antialiased font-sans">
+    <div className="clay-scene min-h-screen flex flex-col text-clay-foreground antialiased font-sans">
       
       {/* Upper Navigation Header */}
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-50 shadow-3xs">
+      <header className="sticky top-0 z-50 px-3 py-3">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="clay-surface flex flex-wrap justify-between items-center gap-3 px-4 py-3 sm:px-5">
             
             {/* Logo brand */}
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-600/10">
-                <TrendingUp size={18} className="text-white" />
+              <div className="clay-orb w-11 h-11 bg-gradient-to-br from-sky-400 to-violet-600 flex items-center justify-center">
+                <TrendingUp size={20} className="text-white stroke-[3px]" />
               </div>
               <div>
-                <span className="font-extrabold tracking-tight text-slate-900 text-sm block">TRADEPLAN</span>
-                <span className="text-4xs font-bold text-blue-600 font-mono tracking-widest uppercase block">SYSTEM INTERFACE</span>
+                <span className="font-display font-black tracking-tight text-clay-foreground text-sm block leading-none">TRADEPLAN</span>
+                <span className="text-4xs font-bold text-clay-muted font-mono uppercase tracking-wide block">SYSTEM INTERFACE</span>
               </div>
             </div>
 
             {/* Account Switcher Component */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
-                <Database size={13} className="text-blue-600" />
+            <div className="flex items-center gap-2 order-3 w-full md:order-none md:w-auto">
+              <div className="clay-pressed flex items-center gap-1.5 px-3 py-2 w-full md:w-auto">
+                <Database size={14} className="text-clay-accent stroke-[3px]" />
                 <select
                   value={selectedAccountId}
                   onChange={(e) => setSelectedAccountId(e.target.value)}
-                  className="text-2xs font-extrabold text-slate-700 bg-transparent border-none focus:outline-none cursor-pointer font-sans"
+                  className="text-2xs font-bold text-clay-foreground bg-transparent border-none focus:outline-none cursor-pointer font-sans w-full md:max-w-[320px]"
                 >
                   <option value="ALL">Consolidated Views (All Accounts)</option>
                   {accounts.map(acc => (
@@ -692,7 +692,7 @@ export default function App() {
                 </select>
                 <button
                   onClick={() => setShowAccountModal(true)}
-                  className="p-1 hover:bg-slate-200/60 rounded-md text-slate-400 hover:text-slate-600 transition"
+                  className="rounded-full p-1.5 text-clay-muted hover:bg-white hover:text-clay-accent transition cursor-pointer"
                   title="Configure Accounts"
                 >
                   <Settings size={13} />
@@ -701,7 +701,7 @@ export default function App() {
             </div>
 
             {/* Main Tabs Navigation */}
-            <nav className="hidden lg:flex space-x-1">
+            <nav className="hidden lg:flex gap-2">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'plans', label: 'Setup Plans', icon: FileText },
@@ -719,13 +719,13 @@ export default function App() {
                       setCurrentTab(tab.id);
                       if (tab.id !== 'journal') setPrefillTrade(null);
                     }}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 rounded-[20px] px-3.5 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${
                       isActive 
-                        ? 'bg-blue-50 text-blue-600' 
-                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                        ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]' 
+                        : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent hover:-translate-y-1'
                     }`}
                   >
-                    <Icon size={13} />
+                    <Icon size={13} className="stroke-[3px]" />
                     {tab.label}
                   </button>
                 );
@@ -736,7 +736,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               {/* Cloud Sync Button */}
               {firebaseLoading ? (
-                <div className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 text-slate-400 text-3xs font-extrabold rounded-lg">
+                <div className="clay-pressed flex items-center gap-1 px-3 py-2 text-clay-muted text-3xs font-bold uppercase">
                   <Loader2 size={10} className="animate-spin" />
                   <span>Checking...</span>
                 </div>
@@ -744,10 +744,10 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 border text-3xs font-extrabold uppercase tracking-wider rounded-lg hover:bg-opacity-80 transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 rounded-[18px] px-3 py-2 text-3xs font-bold uppercase transition-all duration-200 cursor-pointer shadow-clayButton hover:-translate-y-1 ${
                       isDemoUser 
-                        ? 'bg-amber-50 border-amber-200 text-amber-700' 
-                        : 'bg-green-50 border-green-200 text-green-700'
+                        ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white' 
+                        : 'bg-gradient-to-br from-emerald-300 to-emerald-500 text-white'
                     }`}
                     title={isDemoUser ? "Connected in local Guest Mode" : `Connected and Synced: ${user.displayName || user.email}`}
                   >
@@ -761,7 +761,7 @@ export default function App() {
 
                   <button
                     onClick={handleAuthSignOut}
-                    className="flex items-center gap-1 px-2.5 py-1.5 hover:bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 text-3xs font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer"
+                    className="clay-button clay-button-secondary min-h-0 px-3 py-2 text-3xs uppercase"
                     title="Sign out of current account"
                   >
                     <LogOut size={10} />
@@ -770,12 +770,12 @@ export default function App() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md font-mono font-bold uppercase tracking-wider">
+                  <span className="clay-pill text-[10px] font-mono uppercase">
                     Guest Mode
                   </span>
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-3xs font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer shadow-xs"
+                    className="clay-button clay-button-primary min-h-0 px-3 py-2 text-3xs uppercase"
                     title="Sign in or register an account to backup data"
                   >
                     <LogIn size={10} />
@@ -786,7 +786,7 @@ export default function App() {
 
               <button
                 onClick={handleResetData}
-                className="flex items-center gap-1 px-2.5 py-1.5 hover:bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 text-3xs font-extrabold uppercase tracking-wider rounded-lg transition cursor-pointer"
+                className="clay-button clay-button-secondary min-h-0 px-3 py-2 text-3xs uppercase"
                 title="Reset to preloaded Gold demo data"
               >
                 <RefreshCw size={10} />
@@ -800,8 +800,8 @@ export default function App() {
 
       {/* Account Switcher / Management Modal */}
       {showAccountModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full border border-slate-100 p-6 space-y-5 shadow-2xl animate-scaleUp">
+        <div className="fixed inset-0 bg-[#332F3A]/35 z-50 flex items-center justify-center p-4">
+          <div className="clay-surface max-w-xl w-full p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
             
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div className="space-y-0.5">
@@ -951,8 +951,8 @@ export default function App() {
 
       {/* Cloud Sync (Auth) Setup Modal */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 p-6 space-y-5 shadow-2xl animate-scaleUp">
+        <div className="fixed inset-0 bg-[#332F3A]/35 z-50 flex items-center justify-center p-4">
+          <div className="clay-surface max-w-md w-full p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
             
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div className="space-y-0.5">
@@ -1174,7 +1174,7 @@ export default function App() {
       )}
 
       {/* Mobile Sticky Tab bar */}
-      <div className="md:hidden bg-white border-b border-slate-100 py-2 px-4 sticky top-16 z-40 overflow-x-auto flex gap-1 scrollbar-none">
+      <div className="lg:hidden clay-surface mx-4 mt-2 py-3 px-4 sticky top-[92px] z-40 overflow-x-auto flex gap-2 scrollbar-none">
         {[
           { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
           { id: 'plans', label: 'Plans', icon: FileText },
@@ -1191,10 +1191,10 @@ export default function App() {
                 setCurrentTab(tab.id);
                 if (tab.id !== 'journal') setPrefillTrade(null);
               }}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-2xs font-bold whitespace-nowrap cursor-pointer ${
+              className={`flex items-center gap-1 rounded-[18px] px-3 py-2 text-2xs font-bold uppercase whitespace-nowrap cursor-pointer transition-all duration-200 ${
                 isActive 
-                  ? 'bg-blue-50 text-blue-600' 
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton' 
+                  : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent'
               }`}
             >
               <Icon size={12} />
@@ -1261,10 +1261,10 @@ export default function App() {
       </main>
 
       {/* Footer credits bar */}
-      <footer className="bg-white border-t border-slate-100 py-5 mt-12 text-center text-3xs text-slate-400 font-mono">
+      <footer className="clay-surface mx-auto mb-6 mt-12 w-[calc(100%-2rem)] max-w-7xl py-5 text-center text-3xs text-clay-muted font-mono">
         <div>TRADEPLAN & EXECUTIVE TRADING JOURNAL • CLIENT-SIDE PERSISTENCE SECURED</div>
-        <div className="mt-1 flex justify-center items-center gap-1.5 text-slate-350">
-          <Database size={10} />
+        <div className="mt-1 flex justify-center items-center gap-1.5 text-clay-accent">
+          <Database size={10} className="stroke-[3px]" />
           <span>Local Storage Cache Active • Live UTC Session Feed</span>
         </div>
       </footer>
