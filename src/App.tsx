@@ -55,6 +55,7 @@ import JournalView from './components/JournalView';
 import PnLCalendar from './components/PnLCalendar';
 import InsightsView from './components/InsightsView';
 import ReviewView from './components/ReviewView';
+import BrandLogo from './components/BrandLogo';
 
 enum OperationType {
   CREATE = 'create',
@@ -790,15 +791,7 @@ export default function App() {
           <div className="clay-surface flex flex-wrap justify-between items-center gap-3 px-4 py-3 sm:px-5">
 
             {/* Logo brand */}
-            <div className="flex items-center gap-2.5">
-              <div className="clay-orb w-11 h-11 bg-gradient-to-br from-sky-400 to-violet-600 flex items-center justify-center">
-                <TrendingUp size={20} className="text-white stroke-[3px]" />
-              </div>
-              <div>
-                <span className="font-display font-black tracking-tight text-clay-foreground text-sm block leading-none">TradeForge</span>
-                <span className="text-4xs font-bold text-clay-muted font-mono uppercase tracking-wide block">When Data To Discipline.</span>
-              </div>
-            </div>
+            <BrandLogo size={44} />
 
             {/* Account Switcher Component */}
             <div className="flex items-center gap-2 order-3 w-full md:order-none md:w-auto">
