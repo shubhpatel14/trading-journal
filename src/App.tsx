@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  BookOpen, 
-  Calendar, 
+import {
+  LayoutDashboard,
+  FileText,
+  BookOpen,
+  Calendar,
   BrainCircuit,
   TrendingUp,
   Database,
@@ -28,14 +28,14 @@ import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview } from './t
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS } from './mockData';
 
 // Import Firebase config & helpers
-import { 
-  auth, 
-  db, 
-  googleProvider, 
-  isFirebaseConfigured, 
-  signInWithPopup, 
-  signInAnonymously, 
-  signOut, 
+import {
+  auth,
+  db,
+  googleProvider,
+  isFirebaseConfigured,
+  signInWithPopup,
+  signInAnonymously,
+  signOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -105,7 +105,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
-  
+
   // Cloud Sync & Firebase states
   const [user, setUser] = useState<any>(null);
   const [firebaseLoading, setFirebaseLoading] = useState(true);
@@ -302,7 +302,7 @@ export default function App() {
       if (loadedAccounts.length === 0 && loadedTrades.length === 0 && loadedPlans.length === 0) {
         console.log("Empty profile detected. Initializing database with current active lists...");
         const batch = writeBatch(db);
-        
+
         accounts.forEach(acc => {
           batch.set(doc(db, 'users', userId, 'accounts', acc.id), acc);
         });
@@ -359,7 +359,7 @@ export default function App() {
           const savedAccounts = localStorage.getItem('TRADEPLAN_ACCOUNTS');
           const savedTrades = localStorage.getItem('TRADEPLAN_TRADES');
           const savedPlans = localStorage.getItem('TRADEPLAN_PLANS');
-          
+
           if (savedAccounts) setAccounts(JSON.parse(savedAccounts));
           if (savedTrades) setTrades(JSON.parse(savedTrades));
           if (savedPlans) setPlans(JSON.parse(savedPlans));
@@ -475,7 +475,7 @@ export default function App() {
         console.error("Sign out failed", err);
       }
     }
-    
+
     // Clear mock user state
     localStorage.removeItem('TRADEPLAN_MOCK_USER');
     setUser(null);
@@ -485,7 +485,7 @@ export default function App() {
     const savedAccounts = localStorage.getItem('TRADEPLAN_ACCOUNTS');
     const savedTrades = localStorage.getItem('TRADEPLAN_TRADES');
     const savedPlans = localStorage.getItem('TRADEPLAN_PLANS');
-    
+
     setAccounts(savedAccounts ? JSON.parse(savedAccounts) : INITIAL_ACCOUNTS);
     setTrades(savedTrades ? JSON.parse(savedTrades) : INITIAL_TRADES);
     setPlans(savedPlans ? JSON.parse(savedPlans) : INITIAL_TRADE_PLANS);
@@ -515,7 +515,7 @@ export default function App() {
     setTrades(prev => {
       const updated = prev.map(t => t.id === id ? { ...t, ...updatedFields } : t);
       const updatedTrade = updated.find(t => t.id === id);
-      
+
       if (user && db && !isDemoUser && updatedTrade) {
         setDoc(doc(db, 'users', user.uid, 'trades', id), updatedTrade).catch(e => {
           handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/trades/${id}`);
@@ -528,7 +528,7 @@ export default function App() {
   const handleDeleteTrade = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this trade from your journal?')) {
       setTrades(prev => prev.filter(t => t.id !== id));
-      
+
       if (user && db && !isDemoUser) {
         setIsCloudSyncing(true);
         try {
@@ -567,7 +567,7 @@ export default function App() {
     setPlans(prev => {
       const updated = prev.map(p => p.id === id ? { ...p, status: 'ARCHIVED' as const } : p);
       const updatedPlan = updated.find(p => p.id === id);
-      
+
       if (user && db && !isDemoUser && updatedPlan) {
         setDoc(doc(db, 'users', user.uid, 'plans', id), updatedPlan).catch(e => {
           handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/plans/${id}`);
@@ -621,7 +621,7 @@ export default function App() {
         setIsCloudSyncing(true);
         try {
           const batch = writeBatch(db);
-          
+
           // Seed the reset data directly
           INITIAL_ACCOUNTS.forEach(acc => {
             batch.set(doc(db, 'users', user.uid, 'accounts', acc.id), acc);
@@ -662,7 +662,7 @@ export default function App() {
 
     setAccounts(prev => [...prev, newAcc]);
     setSelectedAccountId(newAcc.id);
-    
+
     // Reset Form
     setNewAccName('');
     setNewAccBroker('');
@@ -708,14 +708,14 @@ export default function App() {
 
   // Filter trades dynamically by active account
   const activeAccount = accounts.find(a => a.id === selectedAccountId);
-  
+
   const filteredTrades = trades.filter(t => {
     if (selectedAccountId === 'ALL') return true;
     return t.accountId === selectedAccountId;
   });
 
   // Calculate account stats or defaults
-  const totalAccountInitialBalance = selectedAccountId === 'ALL' 
+  const totalAccountInitialBalance = selectedAccountId === 'ALL'
     ? accounts.reduce((sum, a) => sum + a.initialBalance, 0)
     : activeAccount?.initialBalance || 100000;
 
@@ -725,20 +725,20 @@ export default function App() {
 
   return (
     <div className="clay-scene min-h-screen flex flex-col text-clay-foreground antialiased font-sans">
-      
+
       {/* Upper Navigation Header */}
       <header className="relative z-30 px-3 py-3">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="clay-surface flex flex-wrap justify-between items-center gap-3 px-4 py-3 sm:px-5">
-            
+
             {/* Logo brand */}
             <div className="flex items-center gap-2.5">
               <div className="clay-orb w-11 h-11 bg-gradient-to-br from-sky-400 to-violet-600 flex items-center justify-center">
                 <TrendingUp size={20} className="text-white stroke-[3px]" />
               </div>
               <div>
-                <span className="font-display font-black tracking-tight text-clay-foreground text-sm block leading-none">TRADEPLAN</span>
-                <span className="text-4xs font-bold text-clay-muted font-mono uppercase tracking-wide block">SYSTEM INTERFACE</span>
+                <span className="font-display font-black tracking-tight text-clay-foreground text-sm block leading-none">TradeForge</span>
+                <span className="text-4xs font-bold text-clay-muted font-mono uppercase tracking-wide block">When Data To Discipline.</span>
               </div>
             </div>
 
@@ -788,11 +788,10 @@ export default function App() {
                       setCurrentTab(tab.id);
                       if (tab.id !== 'journal') setPrefillTrade(null);
                     }}
-                    className={`flex items-center gap-1.5 rounded-[20px] px-3.5 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${
-                      isActive 
-                        ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]' 
-                        : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent hover:-translate-y-1'
-                    }`}
+                    className={`flex items-center gap-1.5 rounded-[20px] px-3.5 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${isActive
+                      ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]'
+                      : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent hover:-translate-y-1'
+                      }`}
                   >
                     <Icon size={13} className="stroke-[3px]" />
                     {tab.label}
@@ -801,7 +800,7 @@ export default function App() {
               })}
             </nav>
 
-             {/* Reset helper bar */}
+            {/* Reset helper bar */}
             <div className="flex items-center gap-2">
               {/* Cloud Sync Button */}
               {firebaseLoading ? (
@@ -813,11 +812,10 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className={`flex items-center gap-1.5 rounded-[18px] px-3 py-2 text-3xs font-bold uppercase transition-all duration-200 cursor-pointer shadow-clayButton hover:-translate-y-1 ${
-                      isDemoUser 
-                        ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white' 
-                        : 'bg-gradient-to-br from-emerald-300 to-emerald-500 text-white'
-                    }`}
+                    className={`flex items-center gap-1.5 rounded-[18px] px-3 py-2 text-3xs font-bold uppercase transition-all duration-200 cursor-pointer shadow-clayButton hover:-translate-y-1 ${isDemoUser
+                      ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white'
+                      : 'bg-gradient-to-br from-emerald-300 to-emerald-500 text-white'
+                      }`}
                     title={isDemoUser ? "Connected in local Guest Mode" : `Connected and Synced: ${user.displayName || user.email}`}
                   >
                     <div className="relative flex h-1.5 w-1.5">
@@ -871,7 +869,7 @@ export default function App() {
       {showAccountModal && (
         <div className="fixed inset-0 bg-[#332F3A]/35 z-50 flex items-center justify-center p-4">
           <div className="clay-surface max-w-xl w-full p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
-            
+
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div className="space-y-0.5">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
@@ -900,13 +898,12 @@ export default function App() {
                   const isSelected = selectedAccountId === acc.id;
 
                   return (
-                    <div 
-                      key={acc.id} 
-                      className={`p-3 rounded-xl border flex justify-between items-center text-xs transition ${
-                        isSelected 
-                          ? 'bg-blue-50/40 border-blue-200' 
-                          : 'bg-slate-50/50 border-slate-150'
-                      }`}
+                    <div
+                      key={acc.id}
+                      className={`p-3 rounded-xl border flex justify-between items-center text-xs transition ${isSelected
+                        ? 'bg-blue-50/40 border-blue-200'
+                        : 'bg-slate-50/50 border-slate-150'
+                        }`}
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1.5">
@@ -924,11 +921,10 @@ export default function App() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => setSelectedAccountId(acc.id)}
-                          className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-md transition ${
-                            isSelected 
-                              ? 'bg-blue-600 text-white' 
-                              : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
-                          }`}
+                          className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-md transition ${isSelected
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
+                            }`}
                         >
                           {isSelected ? 'Active' : 'Select'}
                         </button>
@@ -1022,7 +1018,7 @@ export default function App() {
       {showAuthModal && (
         <div className="fixed inset-0 bg-[#332F3A]/35 z-50 flex items-center justify-center p-4">
           <div className="clay-surface max-w-md w-full p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
-            
+
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div className="space-y-0.5">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -1131,7 +1127,7 @@ export default function App() {
                       Firebase Backend Unconfigured
                     </div>
                     <p className="leading-relaxed font-sans text-slate-600">
-                      The Firebase database configuration is not yet fully loaded or provisioned. 
+                      The Firebase database configuration is not yet fully loaded or provisioned.
                       You can enter <strong className="text-amber-900">Guest Mode (Demo Offline)</strong> below to log trades, manage your account, and test the AI Coach in-browser right now!
                     </p>
                   </div>
@@ -1150,7 +1146,7 @@ export default function App() {
                         />
                       </div>
                     )}
-                    
+
                     <div className="space-y-1">
                       <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Email Address</label>
                       <input
@@ -1261,11 +1257,10 @@ export default function App() {
                 setCurrentTab(tab.id);
                 if (tab.id !== 'journal') setPrefillTrade(null);
               }}
-              className={`flex items-center gap-1 rounded-[18px] px-3 py-2 text-2xs font-bold uppercase whitespace-nowrap cursor-pointer transition-all duration-200 ${
-                isActive 
-                  ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton' 
-                  : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent'
-              }`}
+              className={`flex items-center gap-1 rounded-[18px] px-3 py-2 text-2xs font-bold uppercase whitespace-nowrap cursor-pointer transition-all duration-200 ${isActive
+                ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton'
+                : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent'
+                }`}
             >
               <Icon size={12} />
               {tab.label}
@@ -1276,7 +1271,7 @@ export default function App() {
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {currentTab === 'dashboard' && (
           <Dashboard
             trades={filteredTrades}
@@ -1321,16 +1316,16 @@ export default function App() {
         )}
 
         {currentTab === 'insights' && (
-          <InsightsView 
-            trades={filteredTrades} 
-            selectedAccountId={selectedAccountId} 
-            accounts={accounts} 
+          <InsightsView
+            trades={filteredTrades}
+            selectedAccountId={selectedAccountId}
+            accounts={accounts}
           />
         )}
 
         {currentTab === 'reviews' && (
-          <ReviewView 
-            trades={filteredTrades} 
+          <ReviewView
+            trades={filteredTrades}
             dailyReviews={dailyReviews}
             weeklyReviews={weeklyReviews}
             onAddDailyReview={handleAddDailyReview}
