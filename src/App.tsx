@@ -201,42 +201,82 @@ export default function App() {
 
   // Synchronize Daily Reviews to LocalStorage
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('TRADEPLAN_DAILY_REVIEWS', JSON.stringify(dailyReviews));
-    }
-  }, [dailyReviews, user]);
+    localStorage.setItem('TRADEPLAN_DAILY_REVIEWS', JSON.stringify(dailyReviews));
+  }, [dailyReviews]);
 
   // Synchronize Weekly Reviews to LocalStorage
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
-    }
-  }, [weeklyReviews, user]);
+    localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
+  }, [weeklyReviews]);
 
-  const handleAddDailyReview = (newReview: Omit<DailyReview, 'id' | 'createdAt'>) => {
+  const handleAddDailyReview = async (newReview: Omit<DailyReview, 'id' | 'createdAt'>) => {
     const rev: DailyReview = {
       ...newReview,
       id: `drev-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
     setDailyReviews(prev => [rev, ...prev.filter(r => r.date !== newReview.date)]);
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'daily_reviews', rev.id), rev);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/daily_reviews/${rev.id}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
   };
 
-  const handleDeleteDailyReview = (id: string) => {
+  const handleDeleteDailyReview = async (id: string) => {
     setDailyReviews(prev => prev.filter(r => r.id !== id));
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'daily_reviews', id));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.DELETE, `users/${user.uid}/daily_reviews/${id}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
   };
 
-  const handleAddWeeklyReview = (newReview: Omit<WeeklyReview, 'id' | 'createdAt'>) => {
+  const handleAddWeeklyReview = async (newReview: Omit<WeeklyReview, 'id' | 'createdAt'>) => {
     const rev: WeeklyReview = {
       ...newReview,
       id: `wrev-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
     setWeeklyReviews(prev => [rev, ...prev.filter(r => r.weekStartDate !== newReview.weekStartDate)]);
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'weekly_reviews', rev.id), rev);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/weekly_reviews/${rev.id}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
   };
 
-  const handleDeleteWeeklyReview = (id: string) => {
+  const handleDeleteWeeklyReview = async (id: string) => {
     setWeeklyReviews(prev => prev.filter(r => r.id !== id));
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'weekly_reviews', id));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.DELETE, `users/${user.uid}/weekly_reviews/${id}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
   };
 
   // Prefilled state for executing plans
@@ -244,10 +284,8 @@ export default function App() {
 
   // Synchronize Accounts to LocalStorage
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('TRADEPLAN_ACCOUNTS', JSON.stringify(accounts));
-    }
-  }, [accounts, user]);
+    localStorage.setItem('TRADEPLAN_ACCOUNTS', JSON.stringify(accounts));
+  }, [accounts]);
 
   // Synchronize Selected Account ID to LocalStorage
   useEffect(() => {
@@ -256,17 +294,13 @@ export default function App() {
 
   // Synchronize Trades to LocalStorage
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
-    }
-  }, [trades, user]);
+    localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
+  }, [trades]);
 
   // Synchronize Plans to LocalStorage
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('TRADEPLAN_PLANS', JSON.stringify(plans));
-    }
-  }, [plans, user]);
+    localStorage.setItem('TRADEPLAN_PLANS', JSON.stringify(plans));
+  }, [plans]);
 
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
@@ -298,6 +332,22 @@ export default function App() {
         loadedPlans.push({ id: docSnap.id, ...docSnap.data() } as TradePlan);
       });
 
+      // 4. Fetch daily_reviews
+      const dailyRevRef = collection(db, 'users', userId, 'daily_reviews');
+      const dailyRevSnap = await getDocs(dailyRevRef);
+      let loadedDailyReviews: DailyReview[] = [];
+      dailyRevSnap.forEach(docSnap => {
+        loadedDailyReviews.push({ id: docSnap.id, ...docSnap.data() } as DailyReview);
+      });
+
+      // 5. Fetch weekly_reviews
+      const weeklyRevRef = collection(db, 'users', userId, 'weekly_reviews');
+      const weeklyRevSnap = await getDocs(weeklyRevRef);
+      let loadedWeeklyReviews: WeeklyReview[] = [];
+      weeklyRevSnap.forEach(docSnap => {
+        loadedWeeklyReviews.push({ id: docSnap.id, ...docSnap.data() } as WeeklyReview);
+      });
+
       // Seeding logic if empty
       if (loadedAccounts.length === 0 && loadedTrades.length === 0 && loadedPlans.length === 0) {
         console.log("Empty profile detected. Initializing database with current active lists...");
@@ -312,6 +362,12 @@ export default function App() {
         plans.forEach(p => {
           batch.set(doc(db, 'users', userId, 'plans', p.id), p);
         });
+        dailyReviews.forEach(r => {
+          batch.set(doc(db, 'users', userId, 'daily_reviews', r.id), r);
+        });
+        weeklyReviews.forEach(r => {
+          batch.set(doc(db, 'users', userId, 'weekly_reviews', r.id), r);
+        });
 
         await batch.commit();
       } else {
@@ -319,6 +375,8 @@ export default function App() {
         if (loadedAccounts.length > 0) setAccounts(loadedAccounts);
         setTrades(loadedTrades);
         setPlans(loadedPlans);
+        setDailyReviews(loadedDailyReviews);
+        setWeeklyReviews(loadedWeeklyReviews);
       }
     } catch (err: any) {
       console.error("Firebase cloud sync failed:", err);

@@ -83,6 +83,34 @@
             "status": { "type": "string" },
             "createdAt": { "type": "string" }
           }
+        },
+        "daily_reviews": {
+          "schema": {
+            "id": { "type": "string" },
+            "date": { "type": "string" },
+            "rating": { "type": "number" },
+            "ruleAdherence": { "type": "string" },
+            "whatWentWell": { "type": "string" },
+            "improvementsNeeded": { "type": "string" },
+            "mistakesAnalyzed": { "type": "array", "items": { "type": "string" } },
+            "actionItems": { "type": "string" },
+            "chartScreenshot": { "type": "string" },
+            "createdAt": { "type": "string" }
+          }
+        },
+        "weekly_reviews": {
+          "schema": {
+            "id": { "type": "string" },
+            "weekStartDate": { "type": "string" },
+            "weekEndDate": { "type": "string" },
+            "grade": { "type": "string" },
+            "keyLessons": { "type": "string" },
+            "focusGoalsNextWeek": { "type": "string" },
+            "topMistakes": { "type": "array", "items": { "type": "string font-mono" } },
+            "weeklyNotes": { "type": "string" },
+            "weeklyScreenshot": { "type": "string" },
+            "createdAt": { "type": "string" }
+          }
         }
       }
     }
