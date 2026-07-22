@@ -29,13 +29,15 @@ const getEnvValue = (val: any, fallback: string): string => {
   return val;
 };
 
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: getEnvValue(import.meta.env.VITE_FIREBASE_API_KEY, "AIzaSyAq7fZqQbo_PaQOMfsWWjTMAxkPJ86sP_0"),
-  authDomain: getEnvValue(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, "inner-dominion-3t3g1.firebaseapp.com"),
-  projectId: getEnvValue(import.meta.env.VITE_FIREBASE_PROJECT_ID, "inner-dominion-3t3g1"),
-  storageBucket: getEnvValue(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, "inner-dominion-3t3g1.firebasestorage.app"),
-  messagingSenderId: getEnvValue(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID, "247612076242"),
-  appId: getEnvValue(import.meta.env.VITE_FIREBASE_APP_ID, "1:247612076242:web:9ddf65b9da51ee8a9c3d0b"),
+  apiKey: "AIzaSyC5EpZZdyGJQoYy914hlHVJvQyXz3guTuM",
+  authDomain: "tradingjournalapp-4ed16.firebaseapp.com",
+  projectId: "tradingjournalapp-4ed16",
+  storageBucket: "tradingjournalapp-4ed16.firebasestorage.app",
+  messagingSenderId: "648615464927",
+  appId: "1:648615464927:web:0a99480ccb4fd7eafafe6a",
+  measurementId: "G-30E3F0M2SE"
 };
 
 // Check if we have required parameters to initialize Firebase

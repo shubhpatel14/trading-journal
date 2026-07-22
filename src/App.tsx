@@ -21,9 +21,10 @@ import {
   UserCheck,
   Sparkles,
   ShieldAlert,
-  Loader2
+  Loader2,
+  ClipboardCheck
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount } from './types';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS } from './mockData';
 
 // Import Firebase config & helpers
@@ -53,6 +54,7 @@ import TradePlanView from './components/TradePlanView';
 import JournalView from './components/JournalView';
 import PnLCalendar from './components/PnLCalendar';
 import InsightsView from './components/InsightsView';
+import ReviewView from './components/ReviewView';
 
 enum OperationType {
   CREATE = 'create',
@@ -170,6 +172,72 @@ export default function App() {
     }
     return INITIAL_TRADE_PLANS;
   });
+
+  // Daily Reviews State with LocalStorage
+  const [dailyReviews, setDailyReviews] = useState<DailyReview[]>(() => {
+    const saved = localStorage.getItem('TRADEPLAN_DAILY_REVIEWS');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Weekly Reviews State with LocalStorage
+  const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>(() => {
+    const saved = localStorage.getItem('TRADEPLAN_WEEKLY_REVIEWS');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  // Synchronize Daily Reviews to LocalStorage
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem('TRADEPLAN_DAILY_REVIEWS', JSON.stringify(dailyReviews));
+    }
+  }, [dailyReviews, user]);
+
+  // Synchronize Weekly Reviews to LocalStorage
+  useEffect(() => {
+    if (!user) {
+      localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
+    }
+  }, [weeklyReviews, user]);
+
+  const handleAddDailyReview = (newReview: Omit<DailyReview, 'id' | 'createdAt'>) => {
+    const rev: DailyReview = {
+      ...newReview,
+      id: `drev-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    setDailyReviews(prev => [rev, ...prev.filter(r => r.date !== newReview.date)]);
+  };
+
+  const handleDeleteDailyReview = (id: string) => {
+    setDailyReviews(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleAddWeeklyReview = (newReview: Omit<WeeklyReview, 'id' | 'createdAt'>) => {
+    const rev: WeeklyReview = {
+      ...newReview,
+      id: `wrev-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    setWeeklyReviews(prev => [rev, ...prev.filter(r => r.weekStartDate !== newReview.weekStartDate)]);
+  };
+
+  const handleDeleteWeeklyReview = (id: string) => {
+    setWeeklyReviews(prev => prev.filter(r => r.id !== id));
+  };
 
   // Prefilled state for executing plans
   const [prefillTrade, setPrefillTrade] = useState<Partial<Trade> | null>(null);
@@ -707,7 +775,8 @@ export default function App() {
                 { id: 'plans', label: 'Setup Plans', icon: FileText },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
-                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit }
+                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
+                { id: 'reviews', label: 'EOD / EOW Reviews', icon: ClipboardCheck }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -1180,7 +1249,8 @@ export default function App() {
           { id: 'plans', label: 'Plans', icon: FileText },
           { id: 'journal', label: 'Journal', icon: BookOpen },
           { id: 'calendar', label: 'Calendar', icon: Calendar },
-          { id: 'insights', label: 'Insights', icon: BrainCircuit }
+          { id: 'insights', label: 'Insights', icon: BrainCircuit },
+          { id: 'reviews', label: 'Reviews', icon: ClipboardCheck }
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = currentTab === tab.id;
@@ -1255,6 +1325,18 @@ export default function App() {
             trades={filteredTrades} 
             selectedAccountId={selectedAccountId} 
             accounts={accounts} 
+          />
+        )}
+
+        {currentTab === 'reviews' && (
+          <ReviewView 
+            trades={filteredTrades} 
+            dailyReviews={dailyReviews}
+            weeklyReviews={weeklyReviews}
+            onAddDailyReview={handleAddDailyReview}
+            onDeleteDailyReview={handleDeleteDailyReview}
+            onAddWeeklyReview={handleAddWeeklyReview}
+            onDeleteWeeklyReview={handleDeleteWeeklyReview}
           />
         )}
 

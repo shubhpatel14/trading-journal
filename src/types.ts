@@ -62,3 +62,30 @@ export interface PerformanceMetrics {
   winCount: number;
   lossCount: number;
 }
+
+export interface DailyReview {
+  id: string;
+  date: string; // YYYY-MM-DD
+  rating: number; // 1 to 5 stars
+  ruleAdherence: 'FULL' | 'PARTIAL' | 'VIOLATED';
+  whatWentWell: string;
+  improvementsNeeded: string;
+  mistakesAnalyzed: string[];
+  actionItems: string;
+  chartScreenshot?: string;
+  createdAt: string;
+}
+
+export interface WeeklyReview {
+  id: string;
+  weekStartDate: string; // YYYY-MM-DD
+  weekEndDate: string; // YYYY-MM-DD
+  grade: 'A+' | 'A' | 'B' | 'C' | 'D' | 'F';
+  keyLessons: string;
+  focusGoalsNextWeek: string;
+  topMistakes: string[];
+  weeklyNotes: string;
+  weeklyScreenshot?: string;
+  createdAt: string;
+}
+

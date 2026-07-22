@@ -19,6 +19,13 @@ const MONTHS = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const getLocalDateStr = (d: Date) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function PnLCalendar({ trades }: PnLCalendarProps) {
   // Use current date as baseline calendar view
   const [currentDate, setCurrentDate] = useState(() => {
@@ -57,7 +64,7 @@ export default function PnLCalendar({ trades }: PnLCalendarProps) {
   for (let i = firstDayOfMonth - 1; i >= 0; i--) {
     const dayVal = daysInPrevMonth - i;
     const prevMonthDate = new Date(year, month - 1, dayVal);
-    const dateStr = prevMonthDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateStr(prevMonthDate);
     currentWeek.push({
       dateStr,
       dayNum: dayVal,
@@ -72,7 +79,7 @@ export default function PnLCalendar({ trades }: PnLCalendarProps) {
       currentWeek = [];
     }
     const curDate = new Date(year, month, d);
-    const dateStr = curDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateStr(curDate);
     currentWeek.push({
       dateStr,
       dayNum: d,
@@ -84,7 +91,7 @@ export default function PnLCalendar({ trades }: PnLCalendarProps) {
   let nextMonthDay = 1;
   while (currentWeek.length < 7) {
     const nextDate = new Date(year, month + 1, nextMonthDay);
-    const dateStr = nextDate.toISOString().split('T')[0];
+    const dateStr = getLocalDateStr(nextDate);
     currentWeek.push({
       dateStr,
       dayNum: nextMonthDay,
@@ -228,7 +235,7 @@ export default function PnLCalendar({ trades }: PnLCalendarProps) {
                 {week.map((day, dIdx) => {
                   const dayTrades = day.dateStr ? getTradesForDay(day.dateStr) : [];
                   const dayPnl = day.dateStr ? getDailyPnl(day.dateStr) : 0;
-                  const isToday = day.dateStr === new Date().toISOString().split('T')[0];
+                  const isToday = day.dateStr === getLocalDateStr(new Date());
 
                   return (
                     <div

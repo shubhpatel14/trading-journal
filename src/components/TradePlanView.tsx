@@ -26,6 +26,13 @@ interface TradePlanViewProps {
   onExecutePlan: (plan: TradePlan) => void;
 }
 
+const getLocalDateStr = (d = new Date()) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const PREMIUM_MOCK_CHARTS = [
   { name: 'Gold 4HR Trend', url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80' },
   { name: 'FX Accumulation 1HR', url: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=600&q=80' },
@@ -42,7 +49,7 @@ export default function TradePlanView({
 }: TradePlanViewProps) {
   // Current Date filter for Daily changing structure
   const [selectedDate, setSelectedDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateStr();
   });
 
   const [asset, setAsset] = useState('XAUUSD');
@@ -81,7 +88,7 @@ export default function TradePlanView({
   const handleAdjustDate = (days: number) => {
     const d = new Date(selectedDate + 'T00:00:00');
     d.setDate(d.getDate() + days);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(getLocalDateStr(d));
   };
 
   // Prepopulate form with premium template
@@ -575,7 +582,7 @@ export default function TradePlanView({
             </button>
             
             <button
-              onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+              onClick={() => setSelectedDate(getLocalDateStr())}
               className="text-4xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded uppercase tracking-wider"
             >
               Today

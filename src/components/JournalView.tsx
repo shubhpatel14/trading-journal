@@ -34,6 +34,13 @@ interface JournalViewProps {
   onImportBackup: (backupTrades: Trade[]) => void;
 }
 
+const getLocalDateStr = (d = new Date()) => {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 const AVAILABLE_MISTAKES = [
   'None',
   'FOMO',
@@ -117,7 +124,7 @@ export default function JournalView({
       setAsset(prefillTrade.asset || 'XAUUSD');
       setSetup(prefillTrade.setup || 'BoS Downside');
       setDirection(prefillTrade.direction || 'SELL');
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getLocalDateStr());
       setTime(new Date().toTimeString().slice(0, 5));
       setHtfScreenshot('');
       setLtfScreenshot('');
@@ -128,7 +135,7 @@ export default function JournalView({
 
   // Set default date/time on fresh form open
   const handleOpenForm = () => {
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getLocalDateStr());
     setTime(new Date().toTimeString().slice(0, 5));
     setEditingId(null);
     onClearPrefill();
@@ -267,7 +274,7 @@ export default function JournalView({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Trading_Journal_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Trading_Journal_Backup_${getLocalDateStr()}.csv`);
     link.click();
   };
 
