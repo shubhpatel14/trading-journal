@@ -42,14 +42,16 @@ if not mt5.initialize():
     print("❌ MT5 Initialization Failed")
     quit()
 
+from datetime import timedelta
+
 from_date = datetime(2000, 1, 1)
-to_date = datetime.now()
+to_date = datetime.now() + timedelta(days=2)
 
 deals = mt5.history_deals_get(from_date, to_date)
 
 if deals is None:
     # Try fetching with epoch 0
-    deals = mt5.history_deals_get(0, int(datetime.now().timestamp()))
+    deals = mt5.history_deals_get(0, int(to_date.timestamp()))
 
 if deals is None:
     print("❌ No MT5 deal history found")

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 import MetaTrader5 as mt5
 import firebase_admin
@@ -133,13 +133,15 @@ def run_sync():
     1. Checks for MT5 connection.
     2. Reads lastSync timestamp from Firestore:
        - First run (no lastSync): Downloads full trade history.
-       - Subsequent run: Fetches only deals newer than lastSync.
+       - Subsequent run: Fetches only deals newer than lastSync (with 1-day safety margin & future upper bound).
     3. Handles partial closes & multiple deals by fetching position deal history.
     4. Upserts trades into Firestore (users/{USER_UID}/trades/{positionId}).
     5. Updates lastSync timestamp in Firestore after sync completion.
     """
     sync_start = datetime.now()
     now_str = sync_start.strftime("%Y-%m-%d %H:%M:%S")
+    # Upper bound set 2 days in future so MT5 Server Time (~3h ahead of local clock) never gets cut off
+    to_date = sync_start + timedelta(days=2)
 
     # Edge Case 1: MT5 Connection Failure
     if not mt5.initialize():
@@ -151,31 +153,28 @@ def run_sync():
 
     if last_sync_dt is None:
         print(f"[{now_str}] [INFO] First run detected: Fetching complete MT5 trade history...")
-        deals = mt5.history_deals_get(datetime(2000, 1, 1), sync_start)
+        deals = mt5.history_deals_get(datetime(2000, 1, 1), to_date)
         if deals is None:
             # Fallback for MT5 epoch
-            deals = mt5.history_deals_get(0, int(sync_start.timestamp()))
+            deals = mt5.history_deals_get(0, int(to_date.timestamp()))
     else:
+        # Subtract 1 day buffer to avoid missing deals on timezone or partial-close boundaries
+        start_fetch_dt = last_sync_dt - timedelta(days=1)
         last_sync_str = last_sync_dt.strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{now_str}] [INFO] Incremental run: Fetching trades newer than lastSync ({last_sync_str})...")
-        deals = mt5.history_deals_get(last_sync_dt, sync_start)
+        deals = mt5.history_deals_get(start_fetch_dt, to_date)
 
-    # Edge Case 3: No new deals returned by MT5
+    # Edge Case 3: No deals returned by MT5
     if deals is None or len(deals) == 0:
-        print(f"[{now_str}] No new trades found.")
-        # Update lastSync timestamp in Firebase
-        update_last_sync_timestamp(account_ref, sync_start)
+        print(f"[{now_str}] No deals returned from MT5.")
         mt5.shutdown()
         return
 
-    # Edge Case 4 & 5: Extract unique position IDs from new deals
-    # Fetching history by position ID ensures complete position details (open & close deals)
-    # even for partial closes or trades opened before lastSync but closed after lastSync.
+    # Extract unique position IDs from deals
     new_position_ids = set(d.position_id for d in deals if getattr(d, "position_id", 0) > 0)
 
     if not new_position_ids:
-        print(f"[{now_str}] No new trades found.")
-        update_last_sync_timestamp(account_ref, sync_start)
+        print(f"[{now_str}] No valid trade positions found.")
         mt5.shutdown()
         return
 
@@ -243,7 +242,7 @@ def run_sync():
             "commission": round(commission, 2),
             "swap": round(swap, 2),
             "fee": round(fee, 2),
-            "status": "WIN" if net_profit >= 10 else ("LOSS" if net_profit <= -10 else "BREAKEVEN"),
+            "status": "WIN" if net_profit > 0.01 else ("LOSS" if net_profit < -0.01 else "BREAKEVEN"),
             "date": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d"),
             "time": datetime.fromtimestamp(first_open.time).strftime("%H:%M"),
             "openTime": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d %H:%M:%S"),
@@ -298,7 +297,7 @@ if __name__ == "__main__":
         run_sync()
 
         print("\n" + "=" * 60)
-        print("✅ TRADEFORGE SYNC COMPLETED SUCCESSFULLY!")
+        print("[OK] TRADEFORGE SYNC COMPLETED SUCCESSFULLY!")
         print("All MT5 trades have been synced to Firebase.")
         print("=" * 60)
 
@@ -306,7 +305,7 @@ if __name__ == "__main__":
 
     except Exception as e:
         print("\n" + "=" * 60)
-        print("❌ SYNC FAILED!")
+        print("[FAIL] SYNC FAILED!")
         print(f"Error: {e}")
         print("=" * 60)
 
