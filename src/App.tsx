@@ -1359,6 +1359,11 @@ export default function App() {
             prefillTrade={prefillTrade}
             onClearPrefill={() => setPrefillTrade(null)}
             onImportBackup={handleImportBackup}
+            onRefreshData={async () => {
+              if (user?.uid) {
+                await loadUserData(user.uid);
+              }
+            }}
           />
         )}
 

@@ -18,7 +18,8 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { Trade, TradingAccount } from '../types';
 
@@ -32,6 +33,7 @@ interface JournalViewProps {
   prefillTrade: Partial<Trade> | null;
   onClearPrefill: () => void;
   onImportBackup: (backupTrades: Trade[]) => void;
+  onRefreshData?: () => Promise<void>;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -39,6 +41,20 @@ const getLocalDateStr = (d = new Date()) => {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+};
+
+const format12HourTime = (timeStr?: string) => {
+  if (!timeStr) return '';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  if (isNaN(hours)) return timeStr;
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  const formattedHours = String(hours).padStart(2, '0');
+  return `${formattedHours}:${minutes} ${ampm}`;
 };
 
 const AVAILABLE_MISTAKES = [
@@ -66,9 +82,47 @@ export default function JournalView({
   onDeleteTrade,
   prefillTrade,
   onClearPrefill,
-  onImportBackup
+  onImportBackup,
+  onRefreshData
 }: JournalViewProps) {
   
+  const [isSyncingMT5, setIsSyncingMT5] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleSyncMT5 = async () => {
+    setIsSyncingMT5(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await fetch('/api/mt5/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSyncStatusMsg({
+          text: `Synced ${data.uploadedCount} MT5 trades successfully!`,
+          type: 'success'
+        });
+        if (onRefreshData) {
+          await onRefreshData();
+        }
+      } else {
+        setSyncStatusMsg({
+          text: `Sync failed: ${data.error || 'Check MT5 Terminal'}`,
+          type: 'error'
+        });
+      }
+    } catch (err: any) {
+      setSyncStatusMsg({
+        text: `Sync failed: ${err.message || 'Server error'}`,
+        type: 'error'
+      });
+    } finally {
+      setIsSyncingMT5(false);
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    }
+  };
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -102,6 +156,7 @@ export default function JournalView({
   const [setupFilter, setSetupFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sessionFilter, setSessionFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'HIGHEST_PROFIT' | 'HIGHEST_LOSS'>('NEWEST');
 
   // Expanded row state for Trade Details
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
@@ -319,6 +374,33 @@ export default function JournalView({
     return matchSearch && matchAsset && matchSetup && matchStatus && matchSession;
   });
 
+  // Sort Trades
+  const sortedTrades = [...filteredTrades].sort((a, b) => {
+    if (sortBy === 'NEWEST') {
+      const timeA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
+      const timeB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return b.id.localeCompare(a.id);
+    }
+    if (sortBy === 'OLDEST') {
+      const timeA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
+      const timeB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return a.id.localeCompare(b.id);
+    }
+    if (sortBy === 'HIGHEST_PROFIT') {
+      return b.pnl - a.pnl;
+    }
+    if (sortBy === 'HIGHEST_LOSS') {
+      return a.pnl - b.pnl;
+    }
+    return 0;
+  });
+
   // Unique elements for filter dropdowns
   const uniqueAssets = Array.from(new Set(trades.map(t => t.asset)));
   const uniqueSetups = Array.from(new Set(trades.map(t => t.setup)));
@@ -384,6 +466,16 @@ export default function JournalView({
           </label>
 
           <button
+            onClick={handleSyncMT5}
+            disabled={isSyncingMT5}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm cursor-pointer disabled:opacity-60"
+            title="Sync latest trades automatically from MetaTrader 5"
+          >
+            <RefreshCw size={14} className={isSyncingMT5 ? 'animate-spin' : ''} />
+            {isSyncingMT5 ? 'Syncing MT5...' : 'Sync MT5'}
+          </button>
+
+          <button
             id="btn-log-trade"
             onClick={handleOpenForm}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition duration-150 shadow-sm cursor-pointer"
@@ -393,6 +485,18 @@ export default function JournalView({
           </button>
         </div>
       </div>
+
+      {/* Sync Status Notification Banner */}
+      {syncStatusMsg && (
+        <div className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 animate-fadeIn shadow-3xs ${
+          syncStatusMsg.type === 'success' 
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-200/80' 
+            : 'bg-rose-50 text-rose-900 border-rose-200/80'
+        }`}>
+          <Sparkles size={15} className={syncStatusMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
+          <span>{syncStatusMsg.text}</span>
+        </div>
+      )}
 
       {/* Logging Form (Add / Edit) */}
       {showForm && (
@@ -783,11 +887,26 @@ export default function JournalView({
               <option value="LONDON">London</option>
               <option value="ASIA">Asia</option>
             </select>
+
+            {/* Sort selector */}
+            <div className="flex items-center gap-1.5 border-l border-slate-200/80 pl-3">
+              <span className="text-slate-500 text-2xs font-bold font-sans">Sort:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="px-2.5 py-1 border border-blue-200 bg-blue-50/80 rounded-lg text-2xs font-bold text-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-3xs cursor-pointer"
+              >
+                <option value="NEWEST">Newest First</option>
+                <option value="OLDEST">Oldest First</option>
+                <option value="HIGHEST_PROFIT">Highest Profit</option>
+                <option value="HIGHEST_LOSS">Highest Loss</option>
+              </select>
+            </div>
           </div>
         </div>
 
         {/* Tabular logs list */}
-        {filteredTrades.length === 0 ? (
+        {sortedTrades.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-sm">
             No trades match the current filter parameters.
           </div>
@@ -797,6 +916,7 @@ export default function JournalView({
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/20 text-3xs font-extrabold text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-4 font-sans">Account Scope</th>
+                  <th className="py-3 px-4 font-sans">Date & Time (IST)</th>
                   <th className="py-3 px-4 font-sans">Trade / Setup</th>
                   <th className="py-3 px-4 font-sans">Direction</th>
                   <th className="py-3 px-4 font-sans">Entry Price</th>
@@ -809,7 +929,7 @@ export default function JournalView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs">
-                {filteredTrades.map((trade) => {
+                {sortedTrades.map((trade) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
                   const isExpanded = expandedTradeId === trade.id;
 
@@ -828,11 +948,23 @@ export default function JournalView({
                           </span>
                         </td>
 
+                        {/* Date & Time (IST) Column */}
+                        <td className="py-3.5 px-4 font-mono">
+                          <div className="space-y-0.5">
+                            <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <span>{trade.date}</span>
+                              <span className="text-4xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/70 px-1 py-0.2 rounded tracking-wider">IST</span>
+                            </div>
+                            <div className="text-3xs text-slate-500 font-medium">
+                              {trade.time ? `${format12HourTime(trade.time)} IST` : '12:00 PM IST'}
+                            </div>
+                          </div>
+                        </td>
+
                         <td className="py-3.5 px-4">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold font-mono text-slate-900">{trade.asset}</span>
-                              <span className="text-3xs text-slate-400 font-mono font-medium">{trade.time}</span>
                             </div>
                             <div className="text-3xs text-slate-500 font-sans">{trade.setup}</div>
                           </div>
@@ -911,7 +1043,7 @@ export default function JournalView({
                       {/* Expandable row content */}
                       {isExpanded && (
                         <tr className="bg-slate-50/20">
-                          <td colSpan={10} className="p-5 border-b border-slate-100">
+                          <td colSpan={11} className="p-5 border-b border-slate-100">
                             <div className="space-y-4 animate-fadeIn">
                               
                               {/* Notes */}

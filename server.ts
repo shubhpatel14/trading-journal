@@ -66,6 +66,44 @@ Provide your feedback report directly. Use bold scannable headings, professional
     }
   });
 
+  // API endpoint to trigger automatic MT5 trade synchronization
+  app.post('/api/mt5/sync', async (req, res) => {
+    try {
+      const scriptPath = path.join(process.cwd(), 'mt5-sync', 'sync.py');
+      console.log('Triggering MT5 Sync via script:', scriptPath);
+
+      const { exec } = await import('child_process');
+      exec(`python "${scriptPath}"`, (error, stdout, stderr) => {
+        if (error) {
+          console.error('MT5 Sync Script Execution Error:', error, stderr);
+          return res.status(500).json({ 
+            error: 'Failed to execute MT5 sync script. Make sure MT5 terminal is open.', 
+            details: stderr || error.message 
+          });
+        }
+        
+        console.log('MT5 Sync Output:\n', stdout);
+        
+        const uploadedMatch = stdout.match(/Trades Uploaded\s*:\s*(\d+)/);
+        const profitMatch = stdout.match(/Net Profit\s*:\s*([-\d.]+)/);
+
+        const uploadedCount = uploadedMatch ? parseInt(uploadedMatch[1], 10) : 0;
+        const netProfit = profitMatch ? parseFloat(profitMatch[1]) : 0;
+
+        res.json({
+          success: true,
+          message: 'MT5 trade synchronization completed successfully.',
+          uploadedCount,
+          netProfit,
+          output: stdout
+        });
+      });
+    } catch (err: any) {
+      console.error('MT5 Sync Endpoint Error:', err);
+      res.status(500).json({ error: err.message || 'MT5 Sync failed.' });
+    }
+  });
+
   // Vite middleware in development, static folder delivery in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
