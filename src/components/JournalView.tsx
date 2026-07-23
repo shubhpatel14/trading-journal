@@ -19,7 +19,8 @@ import {
   ChevronUp,
   Maximize2,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  CalendarDays
 } from 'lucide-react';
 import { Trade, TradingAccount } from '../types';
 
@@ -34,6 +35,8 @@ interface JournalViewProps {
   onClearPrefill: () => void;
   onImportBackup: (backupTrades: Trade[]) => void;
   onRefreshData?: () => Promise<void>;
+  initialDateFilter?: string | null;
+  onClearDateFilter?: () => void;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -83,7 +86,9 @@ export default function JournalView({
   prefillTrade,
   onClearPrefill,
   onImportBackup,
-  onRefreshData
+  onRefreshData,
+  initialDateFilter,
+  onClearDateFilter
 }: JournalViewProps) {
   
   const [isSyncingMT5, setIsSyncingMT5] = useState(false);
@@ -156,7 +161,27 @@ export default function JournalView({
   const [setupFilter, setSetupFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sessionFilter, setSessionFilter] = useState('ALL');
+  const [dayOfWeekFilter, setDayOfWeekFilter] = useState('ALL');
+  const [dateFilter, setDateFilter] = useState<string>(initialDateFilter || '');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'HIGHEST_PROFIT' | 'HIGHEST_LOSS'>('NEWEST');
+
+  const getTradeDayName = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      return new Date(y, m, d).toLocaleDateString('en-US', { weekday: 'long' });
+    }
+    return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
+  useEffect(() => {
+    if (initialDateFilter) {
+      setDateFilter(initialDateFilter);
+    }
+  }, [initialDateFilter]);
 
   // Expanded row state for Trade Details
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
@@ -370,8 +395,10 @@ export default function JournalView({
     const matchSetup = setupFilter === 'ALL' || t.setup === setupFilter;
     const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
     const matchSession = sessionFilter === 'ALL' || t.session === sessionFilter;
+    const matchDate = !dateFilter || t.date === dateFilter;
+    const matchDayOfWeek = dayOfWeekFilter === 'ALL' || getTradeDayName(t.date).toLowerCase() === dayOfWeekFilter.toLowerCase();
 
-    return matchSearch && matchAsset && matchSetup && matchStatus && matchSession;
+    return matchSearch && matchAsset && matchSetup && matchStatus && matchSession && matchDate && matchDayOfWeek;
   });
 
   // Sort Trades
@@ -822,6 +849,36 @@ export default function JournalView({
         </form>
       )}
 
+      {/* Filtered Date Banner */}
+      {dateFilter && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-blue-50 border border-blue-200/80 p-4 rounded-2xl shadow-xs text-xs">
+          <div className="flex items-center gap-3 font-bold text-slate-800">
+            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-3xs">
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <div className="text-2xs text-blue-700 uppercase font-black tracking-wider">Filtered Calendar View</div>
+              <div className="text-sm font-extrabold text-slate-900 font-mono flex items-center gap-2">
+                <span>{dateFilter}</span>
+                <span className="text-2xs font-semibold font-sans text-slate-500">
+                  ({filteredTrades.length} {filteredTrades.length === 1 ? 'trade' : 'trades'} logged on this day)
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setDateFilter('');
+              if (onClearDateFilter) onClearDateFilter();
+            }}
+            className="self-start sm:self-auto flex items-center gap-1.5 text-2xs font-extrabold bg-white text-slate-700 hover:text-blue-600 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-xl shadow-3xs transition cursor-pointer"
+          >
+            <X size={13} />
+            <span>Show All Dates</span>
+          </button>
+        </div>
+      )}
+
       {/* Interactive Logs Table */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden">
         {/* Table Filters header */}
@@ -888,6 +945,67 @@ export default function JournalView({
               <option value="ASIA">Asia</option>
             </select>
 
+            {/* Day of Week selector */}
+            <select
+              value={dayOfWeekFilter}
+              onChange={(e) => setDayOfWeekFilter(e.target.value)}
+              className="px-2.5 py-1 border border-slate-200 bg-white rounded-lg text-2xs font-semibold text-slate-600 cursor-pointer"
+            >
+              <option value="ALL">All Days of Week</option>
+              <option value="Monday">Monday</option>
+              <option value="Tuesday">Tuesday</option>
+              <option value="Wednesday">Wednesday</option>
+              <option value="Thursday">Thursday</option>
+              <option value="Friday">Friday</option>
+              <option value="Saturday">Saturday</option>
+              <option value="Sunday">Sunday</option>
+            </select>
+
+            {/* Specific Date Picker filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-2xs">
+              <CalendarDays size={13} className="text-slate-400" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="text-2xs font-semibold text-slate-600 focus:outline-none bg-transparent font-sans cursor-pointer"
+                title="Filter by specific date"
+              />
+              {dateFilter && (
+                <button
+                  onClick={() => {
+                    setDateFilter('');
+                    if (onClearDateFilter) onClearDateFilter();
+                  }}
+                  className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                  title="Clear Date Filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Reset Filters Button */}
+            {(assetFilter !== 'ALL' || setupFilter !== 'ALL' || statusFilter !== 'ALL' || sessionFilter !== 'ALL' || dayOfWeekFilter !== 'ALL' || dateFilter !== '' || search !== '') && (
+              <button
+                onClick={() => {
+                  setAssetFilter('ALL');
+                  setSetupFilter('ALL');
+                  setStatusFilter('ALL');
+                  setSessionFilter('ALL');
+                  setDayOfWeekFilter('ALL');
+                  setDateFilter('');
+                  setSearch('');
+                  if (onClearDateFilter) onClearDateFilter();
+                }}
+                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 text-rose-700 rounded-lg text-2xs font-extrabold transition flex items-center gap-1 cursor-pointer shadow-3xs"
+                title="Clear all active filters"
+              >
+                <X size={12} />
+                <span>Reset</span>
+              </button>
+            )}
+
             {/* Sort selector */}
             <div className="flex items-center gap-1.5 border-l border-slate-200/80 pl-3">
               <span className="text-slate-500 text-2xs font-bold font-sans">Sort:</span>
@@ -931,7 +1049,7 @@ export default function JournalView({
               <tbody className="divide-y divide-slate-50 text-xs">
                 {sortedTrades.map((trade) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
-                  const isExpanded = expandedTradeId === trade.id;
+                  const isExpanded = expandedTradeId === trade.id || (Boolean(dateFilter) && expandedTradeId !== `collapsed-${trade.id}`);
 
                   return (
                     <React.Fragment key={trade.id}>
@@ -939,7 +1057,7 @@ export default function JournalView({
                         className={`hover:bg-slate-50/50 transition duration-150 cursor-pointer ${
                           isExpanded ? 'bg-slate-50/30' : ''
                         }`}
-                        onClick={() => setExpandedTradeId(isExpanded ? null : trade.id)}
+                        onClick={() => setExpandedTradeId(isExpanded ? (dateFilter ? `collapsed-${trade.id}` : null) : trade.id)}
                       >
                         {/* Account Scope Column */}
                         <td className="py-3.5 px-4">

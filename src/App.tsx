@@ -106,6 +106,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
+  const [selectedJournalDate, setSelectedJournalDate] = useState<string | null>(null);
 
   // Cloud Sync & Firebase states
   const [user, setUser] = useState<any>(null);
@@ -837,7 +838,10 @@ export default function App() {
                     id={`tab-btn-${tab.id}`}
                     onClick={() => {
                       setCurrentTab(tab.id);
-                      if (tab.id !== 'journal') setPrefillTrade(null);
+                      if (tab.id !== 'journal') {
+                        setPrefillTrade(null);
+                        setSelectedJournalDate(null);
+                      }
                     }}
                     className={`flex items-center gap-1.5 rounded-[20px] px-3.5 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${isActive
                       ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]'
@@ -1306,7 +1310,10 @@ export default function App() {
               key={tab.id}
               onClick={() => {
                 setCurrentTab(tab.id);
-                if (tab.id !== 'journal') setPrefillTrade(null);
+                if (tab.id !== 'journal') {
+                  setPrefillTrade(null);
+                  setSelectedJournalDate(null);
+                }
               }}
               className={`flex items-center gap-1 rounded-[18px] px-3 py-2 text-2xs font-bold uppercase whitespace-nowrap cursor-pointer transition-all duration-200 ${isActive
                 ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton'
@@ -1331,6 +1338,7 @@ export default function App() {
             onExecutePlan={handleExecutePlan}
             onOpenNewTrade={() => {
               setPrefillTrade(null);
+              setSelectedJournalDate(null);
               setCurrentTab('journal');
             }}
             initialCapital={totalAccountInitialBalance}
@@ -1364,11 +1372,19 @@ export default function App() {
                 await loadUserData(user.uid);
               }
             }}
+            initialDateFilter={selectedJournalDate}
+            onClearDateFilter={() => setSelectedJournalDate(null)}
           />
         )}
 
         {currentTab === 'calendar' && (
-          <PnLCalendar trades={filteredTrades} />
+          <PnLCalendar 
+            trades={filteredTrades} 
+            onSelectDate={(dateStr) => {
+              setSelectedJournalDate(dateStr);
+              setCurrentTab('journal');
+            }}
+          />
         )}
 
         {currentTab === 'insights' && (

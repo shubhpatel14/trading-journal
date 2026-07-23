@@ -243,7 +243,7 @@ def run_sync():
             "commission": round(commission, 2),
             "swap": round(swap, 2),
             "fee": round(fee, 2),
-            "status": "WIN" if net_profit > 0 else "LOSS",
+            "status": "WIN" if net_profit >= 10 else ("LOSS" if net_profit <= -10 else "BREAKEVEN"),
             "date": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d"),
             "time": datetime.fromtimestamp(first_open.time).strftime("%H:%M"),
             "openTime": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d %H:%M:%S"),
