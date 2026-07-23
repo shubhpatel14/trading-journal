@@ -74,11 +74,14 @@ Provide your feedback report directly. Use bold scannable headings, professional
 
       const { exec } = await import('child_process');
       exec(`python "${scriptPath}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('MT5 Sync Script Execution Error:', error, stderr);
-          return res.status(500).json({ 
-            error: 'Failed to execute MT5 sync script. Make sure MT5 terminal is open.', 
-            details: stderr || error.message 
+        if (error || (stdout && (stdout.includes("Initialization Failed") || stdout.includes("No MT5 deal history")))) {
+          console.error('MT5 Sync Script Execution Error:', error, stderr, stdout);
+          const isCloudServer = !!process.env.RENDER || process.env.NODE_ENV === 'production';
+          return res.status(400).json({ 
+            error: isCloudServer 
+              ? 'Your website is hosted on Render Cloud, which cannot reach your local PC MT5 application. Please run "python mt5-sync/auto_sync.py" on your Windows PC!'
+              : 'Could not connect to MT5. Ensure MT5 Desktop Terminal is open and logged into your account.', 
+            details: stdout || stderr || error?.message 
           });
         }
         
