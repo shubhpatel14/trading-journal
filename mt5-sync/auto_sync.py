@@ -169,6 +169,46 @@ def run_sync():
 # ============================================================
 # MAIN
 # ============================================================
+# ============================================================
+# MAIN
+# ============================================================
 
 if __name__ == "__main__":
-    run_sync()
+    try:
+        run_sync()
+
+        print("\n" + "=" * 60)
+        print("✅ TRADEFORGE SYNC COMPLETED SUCCESSFULLY!")
+        print("All MT5 trades have been synced to Firebase.")
+        print("=" * 60)
+
+        input("Press Enter to close...")
+
+    except Exception as e:
+        print("\n" + "=" * 60)
+        print("❌ SYNC FAILED!")
+        print(f"Error: {e}")
+        print("=" * 60)
+
+        input("Press Enter to close...")# ============================================================
+# MAIN
+# ============================================================
+
+if __name__ == "__main__":
+    try:
+        run_sync()
+
+        print("\n" + "=" * 60)
+        print("✅ TRADEFORGE SYNC COMPLETED SUCCESSFULLY!")
+        print("All MT5 trades have been synced to Firebase.")
+        print("=" * 60)
+
+        input("Press Enter to close...")
+
+    except Exception as e:
+        print("\n" + "=" * 60)
+        print("❌ SYNC FAILED!")
+        print(f"Error: {e}")
+        print("=" * 60)
+
+        input("Press Enter to close...")
