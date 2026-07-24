@@ -28,6 +28,13 @@ export interface TradePlan {
   createdAt: string;
 }
 
+export interface JournalRule {
+  id: string;
+  label: string;
+  description?: string;
+  weight?: number;
+}
+
 export interface Trade {
   id: string;
   accountId: string; // Associated trading account ID
@@ -48,6 +55,10 @@ export interface Trade {
   notes: string;
   htfScreenshot?: string; // High Timeframe Screenshot
   ltfScreenshot?: string; // Low Timeframe Screenshot
+  checklist?: Record<string, boolean>; // Map of rule ID to boolean checked state
+  checklistScore?: number; // Number of rules met (score)
+  maxChecklistScore?: number; // Total number of rules applicable
+  journalingStatus?: 'COMPLETE' | 'PENDING'; // Status showing if trade journaling/checklist is complete
 }
 
 export interface PerformanceMetrics {

@@ -377,6 +377,15 @@ export default function Dashboard({
                       <span className={`clay-pill ${trade.direction === 'BUY' ? 'bg-gradient-to-br from-emerald-300 to-emerald-500 text-white' : 'bg-gradient-to-br from-pink-400 to-[#DB2777] text-white'}`}>
                         {trade.direction}
                       </span>
+                      {trade.journalingStatus === 'COMPLETE' ? (
+                        <span className="clay-pill bg-purple-100 text-purple-700 text-3xs font-extrabold">
+                          Complete ({trade.checklistScore ?? 0}/{trade.maxChecklistScore ?? 8})
+                        </span>
+                      ) : (
+                        <span className="clay-pill bg-amber-100 text-amber-700 text-3xs font-extrabold">
+                          Pending
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-clay-muted">
                       <span>{trade.date}</span>

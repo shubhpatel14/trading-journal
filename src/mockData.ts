@@ -1,4 +1,15 @@
-import { Trade, TradePlan, TradingAccount } from './types';
+import { Trade, TradePlan, TradingAccount, JournalRule } from './types';
+
+export const DEFAULT_JOURNAL_RULES: JournalRule[] = [
+  { id: 'rule-1', label: 'Liquidity Swept', description: 'Price swept session high/low liquidity before entry' },
+  { id: 'rule-2', label: 'Displacement Candle', description: 'Strong expansion/displacement candle in trade direction' },
+  { id: 'rule-3', label: 'Clean EMA Reaction', description: 'Clean bounce or rejection off key EMA level' },
+  { id: 'rule-4', label: 'EMA Separation', description: 'EMAs are nicely fanned out showing clear trend strength' },
+  { id: 'rule-5', label: 'Support Resistance Confluence', description: 'Entry aligned with key HTF Support/Resistance level' },
+  { id: 'rule-6', label: 'Trendline Confluence', description: 'Entry aligns with trendline touch or breakout retest' },
+  { id: 'rule-7', label: 'Single Clean BOS', description: 'Clear single Break of Structure without market noise' },
+  { id: 'rule-8', label: 'Distance to Target', description: 'Sufficient R:R distance to major target/liquidity pool' },
+];
 
 export const INITIAL_ACCOUNTS: TradingAccount[] = [
   {
@@ -138,7 +149,11 @@ export const INITIAL_TRADES: Trade[] = [
     mistakes: ['None'],
     notes: 'Exited slightly early before TP hit as price stalled at prior demand zone. Very clean trade matching the 15m setup plan.',
     htfScreenshot: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80',
-    ltfScreenshot: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80'
+    ltfScreenshot: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80',
+    checklist: { 'rule-1': true, 'rule-2': true, 'rule-3': true, 'rule-4': true, 'rule-5': true, 'rule-6': false, 'rule-7': true, 'rule-8': true },
+    checklistScore: 7,
+    maxChecklistScore: 8,
+    journalingStatus: 'COMPLETE'
   },
   {
     id: 'trade-2',
@@ -158,7 +173,11 @@ export const INITIAL_TRADES: Trade[] = [
     session: 'LONDON',
     mistakes: ['None'],
     notes: 'Clean continuation pattern. Took partials at +2R.',
-    htfScreenshot: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=600&q=80'
+    htfScreenshot: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=600&q=80',
+    checklist: { 'rule-1': true, 'rule-2': true, 'rule-3': true, 'rule-4': false, 'rule-5': true, 'rule-6': true, 'rule-7': true, 'rule-8': false },
+    checklistScore: 6,
+    maxChecklistScore: 8,
+    journalingStatus: 'COMPLETE'
   },
   {
     id: 'trade-3',

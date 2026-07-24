@@ -20,14 +20,27 @@ import {
   Maximize2,
   Sparkles,
   RefreshCw,
-  CalendarDays
+  CalendarDays,
+  Clock,
+  CheckCircle2,
+  CheckSquare,
+  Edit3,
+  Sliders,
+  RotateCcw,
+  Award,
+  Check
 } from 'lucide-react';
-import { Trade, TradingAccount } from '../types';
+import { Trade, TradingAccount, JournalRule } from '../types';
 
 interface JournalViewProps {
   trades: Trade[];
   accounts: TradingAccount[];
   selectedAccountId: string;
+  journalRules: JournalRule[];
+  onAddRule: (rule: Omit<JournalRule, 'id'>) => void;
+  onEditRule: (id: string, rule: Partial<JournalRule>) => void;
+  onDeleteRule: (id: string) => void;
+  onResetRules: () => void;
   onAddTrade: (trade: Omit<Trade, 'id'>) => void;
   onEditTrade: (id: string, trade: Partial<Trade>) => void;
   onDeleteTrade: (id: string) => void;
@@ -80,6 +93,11 @@ export default function JournalView({
   trades,
   accounts,
   selectedAccountId,
+  journalRules,
+  onAddRule,
+  onEditRule,
+  onDeleteRule,
+  onResetRules,
   onAddTrade,
   onEditTrade,
   onDeleteTrade,
@@ -150,12 +168,28 @@ export default function JournalView({
   const [session, setSession] = useState<'LONDON' | 'NEW YORK' | 'ASIA'>('NEW YORK');
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
   const [notes, setNotes] = useState('');
-  
+  const [formChecklist, setFormChecklist] = useState<Record<string, boolean>>({});
+
+  // Quick Journal / Score Modal state
+  const [journalingTrade, setJournalingTrade] = useState<Trade | null>(null);
+  const [journalingChecklist, setJournalingChecklist] = useState<Record<string, boolean>>({});
+  const [journalingNotes, setJournalingNotes] = useState('');
+  const [journalingMistakes, setJournalingMistakes] = useState<string[]>(['None']);
+
+  // Manage Rules Modal state
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [newRuleLabel, setNewRuleLabel] = useState('');
+  const [newRuleDesc, setNewRuleDesc] = useState('');
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRuleLabel, setEditRuleLabel] = useState('');
+  const [editRuleDesc, setEditRuleDesc] = useState('');
+
   // High / Low Timeframe Screenshots URLs
   const [htfScreenshot, setHtfScreenshot] = useState('');
   const [ltfScreenshot, setLtfScreenshot] = useState('');
 
   // Filtering / Search State
+  const [tradeTypeTab, setTradeTypeTab] = useState<'ALL' | 'COMPLETED' | 'PENDING'>('ALL');
   const [search, setSearch] = useState('');
   const [assetFilter, setAssetFilter] = useState('ALL');
   const [setupFilter, setSetupFilter] = useState('ALL');
@@ -231,6 +265,7 @@ export default function JournalView({
     setHtfScreenshot('');
     setLtfScreenshot('');
     setSelectedMistakes(['None']);
+    setFormChecklist({});
     if (selectedAccountId !== 'ALL') {
       setAccountId(selectedAccountId);
     } else if (accounts.length > 0) {
@@ -267,6 +302,7 @@ export default function JournalView({
     setNotes(trade.notes);
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
+    setFormChecklist(trade.checklist || {});
     setShowForm(true);
   };
 
@@ -286,9 +322,96 @@ export default function JournalView({
     setSelectedMistakes(updated);
   };
 
+  const handleToggleFormRule = (ruleId: string) => {
+    setFormChecklist(prev => ({
+      ...prev,
+      [ruleId]: !prev[ruleId]
+    }));
+  };
+
+  // Quick Journal / Score Modal Handlers
+  const handleOpenJournalModal = (trade: Trade) => {
+    setJournalingTrade(trade);
+    setJournalingChecklist(trade.checklist || {});
+    setJournalingNotes(trade.notes || '');
+    setJournalingMistakes(trade.mistakes && trade.mistakes.length > 0 ? trade.mistakes : ['None']);
+  };
+
+  const handleToggleJournalRule = (ruleId: string) => {
+    setJournalingChecklist(prev => ({
+      ...prev,
+      [ruleId]: !prev[ruleId]
+    }));
+  };
+
+  const handleToggleJournalMistake = (mistake: string) => {
+    if (mistake === 'None') {
+      setJournalingMistakes(['None']);
+      return;
+    }
+    let updated = journalingMistakes.filter(m => m !== 'None');
+    if (updated.includes(mistake)) {
+      updated = updated.filter(m => m !== mistake);
+      if (updated.length === 0) updated = ['None'];
+    } else {
+      updated.push(mistake);
+    }
+    setJournalingMistakes(updated);
+  };
+
+  const handleSaveJournalScore = () => {
+    if (!journalingTrade) return;
+    const checkedCount = journalRules.filter(r => journalingChecklist[r.id]).length;
+    const maxScore = journalRules.length;
+
+    onEditTrade(journalingTrade.id, {
+      checklist: journalingChecklist,
+      checklistScore: checkedCount,
+      maxChecklistScore: maxScore,
+      journalingStatus: 'COMPLETE',
+      notes: journalingNotes,
+      mistakes: journalingMistakes
+    });
+
+    setJournalingTrade(null);
+  };
+
+  // Manage Rules Handlers
+  const handleCreateRuleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRuleLabel.trim()) return;
+    onAddRule({
+      label: newRuleLabel.trim(),
+      description: newRuleDesc.trim() || undefined
+    });
+    setNewRuleLabel('');
+    setNewRuleDesc('');
+  };
+
+  const handleStartEditRule = (rule: JournalRule) => {
+    setEditingRuleId(rule.id);
+    setEditRuleLabel(rule.label);
+    setEditRuleDesc(rule.description || '');
+  };
+
+  const handleSaveEditRule = (id: string) => {
+    if (!editRuleLabel.trim()) return;
+    onEditRule(id, {
+      label: editRuleLabel.trim(),
+      description: editRuleDesc.trim() || undefined
+    });
+    setEditingRuleId(null);
+  };
+
   // Handle submit (save or update)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const checkedRulesCount = journalRules.filter(r => formChecklist[r.id]).length;
+    const maxScore = journalRules.length;
+    const isEvaluated = Object.keys(formChecklist).length > 0;
+
+    const existingTrade = editingId ? trades.find(t => t.id === editingId) : null;
 
     const finalTrade = {
       accountId,
@@ -308,7 +431,11 @@ export default function JournalView({
       mistakes: selectedMistakes,
       notes,
       htfScreenshot: htfScreenshot.trim(),
-      ltfScreenshot: ltfScreenshot.trim()
+      ltfScreenshot: ltfScreenshot.trim(),
+      checklist: formChecklist,
+      checklistScore: isEvaluated ? checkedRulesCount : (existingTrade?.checklistScore ?? 0),
+      maxChecklistScore: isEvaluated ? maxScore : (existingTrade?.maxChecklistScore ?? maxScore),
+      journalingStatus: isEvaluated ? ('COMPLETE' as const) : (existingTrade?.journalingStatus ?? ('PENDING' as const))
     };
 
     if (editingId) {
@@ -385,6 +512,9 @@ export default function JournalView({
     reader.readAsText(file);
   };
 
+  const completedCount = trades.filter(t => t.journalingStatus === 'COMPLETE').length;
+  const pendingCount = trades.filter(t => t.journalingStatus !== 'COMPLETE').length;
+
   // Filter Trades
   const filteredTrades = trades.filter(t => {
     const matchSearch = t.asset.toLowerCase().includes(search.toLowerCase()) || 
@@ -397,8 +527,13 @@ export default function JournalView({
     const matchSession = sessionFilter === 'ALL' || t.session === sessionFilter;
     const matchDate = !dateFilter || t.date === dateFilter;
     const matchDayOfWeek = dayOfWeekFilter === 'ALL' || getTradeDayName(t.date).toLowerCase() === dayOfWeekFilter.toLowerCase();
+    const matchTypeTab = tradeTypeTab === 'ALL' 
+      ? true 
+      : tradeTypeTab === 'PENDING' 
+        ? t.journalingStatus !== 'COMPLETE' 
+        : t.journalingStatus === 'COMPLETE';
 
-    return matchSearch && matchAsset && matchSetup && matchStatus && matchSession && matchDate && matchDayOfWeek;
+    return matchSearch && matchAsset && matchSetup && matchStatus && matchSession && matchDate && matchDayOfWeek && matchTypeTab;
   });
 
   // Sort Trades
@@ -472,6 +607,15 @@ export default function JournalView({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setShowRulesModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-purple-200 hover:bg-purple-50 text-purple-700 text-xs font-bold rounded-lg transition shadow-xs cursor-pointer"
+            title="Add, edit, or delete trade journaling checklist rules"
+          >
+            <Sliders size={14} />
+            Manage Rules ({journalRules.length})
+          </button>
+
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer"
@@ -764,8 +908,24 @@ export default function JournalView({
             </div>
           </div>
 
-          {/* Row 4 - PNL & Rules Check */}
+          {/* Row 4 - Trade Status, PNL & Rules Check */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+            <div>
+              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Trade Status / Outcome
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as any)}
+                className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-800 cursor-pointer"
+              >
+                <option value="WIN">WIN (Completed)</option>
+                <option value="LOSS">LOSS (Completed)</option>
+                <option value="BREAKEVEN">BREAKEVEN (Completed)</option>
+                <option value="OPEN">PENDING / OPEN (Active Trade)</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                 Realized Net Profit/Loss ($)
@@ -779,12 +939,12 @@ export default function JournalView({
                   onChange={(e) => setPnl(e.target.value)}
                   placeholder="3875"
                   className="w-full pl-7 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold font-mono text-slate-800"
-                  required
+                  required={status !== 'OPEN'}
                 />
               </div>
             </div>
 
-            <div className="md:col-span-3">
+            <div className="md:col-span-2">
               <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                 Execution Reflections / Psychology check (Mistakes)
               </label>
@@ -809,6 +969,57 @@ export default function JournalView({
                   );
                 })}
               </div>
+            </div>
+          </div>
+
+          {/* Trade Journaling Checklist Rules */}
+          <div className="p-4 bg-purple-50/50 rounded-xl border border-purple-150 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <CheckSquare size={16} className="text-purple-600" />
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Trade Journaling Confluence Checklist
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-2xs font-bold text-purple-700 bg-purple-100/70 px-2.5 py-1 rounded-lg">
+                <span>Score: {journalRules.filter(r => formChecklist[r.id]).length} / {journalRules.length}</span>
+                <span>({journalRules.length > 0 ? Math.round((journalRules.filter(r => formChecklist[r.id]).length / journalRules.length) * 100) : 0}%)</span>
+              </div>
+            </div>
+
+            <p className="text-3xs text-slate-500 font-sans">
+              Evaluate rules met for this trade. Saving with checklist scores will set status to <strong className="text-emerald-600 font-bold">Journaling Complete</strong>.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
+              {journalRules.map(rule => {
+                const isChecked = Boolean(formChecklist[rule.id]);
+                return (
+                  <label
+                    key={rule.id}
+                    className={`flex items-start gap-2 p-2.5 rounded-xl border transition cursor-pointer text-xs ${
+                      isChecked
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleToggleFormRule(rule.id)}
+                      className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <div className="font-bold leading-tight">{rule.label}</div>
+                      {rule.description && (
+                        <div className={`text-4xs leading-normal ${isChecked ? 'text-purple-100' : 'text-slate-450'}`}>
+                          {rule.description}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -881,6 +1092,61 @@ export default function JournalView({
 
       {/* Interactive Logs Table */}
       <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden">
+        
+        {/* Pending vs Completed Trade Journaling Tabs Header */}
+        <div className="p-3.5 bg-slate-100/50 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200/80 rounded-xl shadow-3xs">
+            <button
+              onClick={() => setTradeTypeTab('ALL')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-2 ${
+                tradeTypeTab === 'ALL'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <span>All Trades</span>
+              <span className={`px-1.5 py-0.2 text-3xs rounded-full font-mono ${tradeTypeTab === 'ALL' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {trades.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setTradeTypeTab('COMPLETED')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-2 ${
+                tradeTypeTab === 'COMPLETED'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <CheckCircle2 size={13} className={tradeTypeTab === 'COMPLETED' ? 'text-white' : 'text-emerald-600'} />
+              <span>Completed Trades</span>
+              <span className={`px-1.5 py-0.2 text-3xs rounded-full font-mono ${tradeTypeTab === 'COMPLETED' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {completedCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setTradeTypeTab('PENDING')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-2 ${
+                tradeTypeTab === 'PENDING'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <Clock size={13} className={tradeTypeTab === 'PENDING' ? 'text-white animate-pulse' : 'text-amber-600'} />
+              <span>Pending Trades</span>
+              <span className={`px-1.5 py-0.2 text-3xs rounded-full font-mono ${tradeTypeTab === 'PENDING' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {pendingCount}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-3xs font-extrabold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg border border-blue-200/60 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles size={12} />
+            <span>Trades Partitioned By Day</span>
+          </div>
+        </div>
+
         {/* Table Filters header */}
         <div className="p-4 bg-slate-50/60 border-b border-slate-100/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
@@ -986,7 +1252,7 @@ export default function JournalView({
             </div>
 
             {/* Reset Filters Button */}
-            {(assetFilter !== 'ALL' || setupFilter !== 'ALL' || statusFilter !== 'ALL' || sessionFilter !== 'ALL' || dayOfWeekFilter !== 'ALL' || dateFilter !== '' || search !== '') && (
+            {(assetFilter !== 'ALL' || setupFilter !== 'ALL' || statusFilter !== 'ALL' || sessionFilter !== 'ALL' || dayOfWeekFilter !== 'ALL' || dateFilter !== '' || search !== '' || tradeTypeTab !== 'ALL') && (
               <button
                 onClick={() => {
                   setAssetFilter('ALL');
@@ -996,6 +1262,7 @@ export default function JournalView({
                   setDayOfWeekFilter('ALL');
                   setDateFilter('');
                   setSearch('');
+                  setTradeTypeTab('ALL');
                   if (onClearDateFilter) onClearDateFilter();
                 }}
                 className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 text-rose-700 rounded-lg text-2xs font-extrabold transition flex items-center gap-1 cursor-pointer shadow-3xs"
@@ -1041,18 +1308,34 @@ export default function JournalView({
                   <th className="py-3 px-4 font-sans">Exit Price</th>
                   <th className="py-3 px-4 font-sans">Size</th>
                   <th className="py-3 px-4 font-sans">P&L ($)</th>
-                  <th className="py-3 px-4 font-sans">Session</th>
-                  <th className="py-3 px-4 font-sans">Reflections</th>
+                  <th className="py-3 px-4 font-sans">Journaling</th>
                   <th className="py-3 px-4 text-right font-sans">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs">
-                {sortedTrades.map((trade) => {
+                {sortedTrades.map((trade, index) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
                   const isExpanded = expandedTradeId === trade.id || (Boolean(dateFilter) && expandedTradeId !== `collapsed-${trade.id}`);
+                  const showDateDivider = index === 0 || sortedTrades[index - 1].date !== trade.date;
 
                   return (
                     <React.Fragment key={trade.id}>
+                      {/* Subtle Line Partitioning Each Day's Trades */}
+                      {showDateDivider && (
+                        <tr key={`divider-${trade.date}-${index}`} className="bg-slate-50/60">
+                          <td colSpan={10} className="py-1.5 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-[1px] flex-1 bg-blue-300/60" />
+                              <span className="text-4xs font-extrabold font-mono text-blue-600 bg-blue-50/80 px-2.5 py-0.5 rounded-md border border-blue-200/70 uppercase tracking-wider flex items-center gap-1 shrink-0">
+                                <CalendarDays size={10} className="text-blue-500" />
+                                {trade.date} • {getTradeDayName(trade.date)}
+                              </span>
+                              <div className="h-[1px] flex-1 bg-blue-300/60" />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+
                       <tr 
                         className={`hover:bg-slate-50/50 transition duration-150 cursor-pointer ${
                           isExpanded ? 'bg-slate-50/30' : ''
@@ -1113,29 +1396,57 @@ export default function JournalView({
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-4">
-                          <span className="text-3xs font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase">
-                            {trade.session}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          <div className="flex flex-wrap gap-1 max-w-[150px]">
-                            {trade.mistakes.map(m => (
-                              <span 
-                                key={m} 
-                                className={`text-3xs px-1.5 py-0.5 rounded ${
-                                  m === 'None' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50/70 text-rose-600'
-                                }`}
-                              >
-                                {m}
-                              </span>
-                            ))}
-                          </div>
+                        {/* Journaling Column */}
+                        <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
+                          {trade.journalingStatus === 'COMPLETE' ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-3xs">
+                                  <CheckCircle2 size={11} />
+                                  Journaling Complete
+                                </span>
+                                {trade.checklistScore !== undefined && trade.maxChecklistScore !== undefined && (
+                                  <span className="text-3xs font-bold font-mono px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/80">
+                                    {trade.checklistScore}/{trade.maxChecklistScore} ({trade.maxChecklistScore > 0 ? Math.round((trade.checklistScore / trade.maxChecklistScore) * 100) : 0}%)
+                                  </span>
+                                )}
+                              </div>
+                              {trade.mistakes && trade.mistakes.length > 0 && trade.mistakes[0] !== 'None' && (
+                                <div className="text-4xs px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 font-bold border border-rose-200/70 inline-block">
+                                  {trade.mistakes.join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/80 shadow-3xs">
+                                  <Clock size={11} className="animate-pulse" />
+                                  Pending
+                                </span>
+                                <button
+                                  onClick={() => handleOpenJournalModal(trade)}
+                                  className="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 text-white text-4xs font-bold rounded shadow-3xs transition cursor-pointer flex items-center gap-1"
+                                >
+                                  <CheckSquare size={10} />
+                                  Score Trade
+                                </button>
+                              </div>
+                              <div className="text-4xs text-slate-400 font-medium">Checklist not evaluated yet</div>
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end items-center gap-1">
+                            <button
+                              onClick={() => handleOpenJournalModal(trade)}
+                              className="px-2 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/80 text-3xs font-bold rounded transition cursor-pointer flex items-center gap-1"
+                              title="Evaluate checklist rules & score trade"
+                            >
+                              <CheckSquare size={11} />
+                              <span>Score</span>
+                            </button>
                             <button
                               onClick={() => handleStartEdit(trade)}
                               className="px-2.5 py-1 hover:bg-slate-100 text-slate-600 text-3xs font-bold rounded transition cursor-pointer border border-slate-200"
@@ -1145,6 +1456,7 @@ export default function JournalView({
                             <button
                               onClick={() => onDeleteTrade(trade.id)}
                               className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer border border-slate-200"
+                              title="Delete trade"
                             >
                               <Trash2 size={12} />
                             </button>
@@ -1161,7 +1473,7 @@ export default function JournalView({
                       {/* Expandable row content */}
                       {isExpanded && (
                         <tr className="bg-slate-50/20">
-                          <td colSpan={11} className="p-5 border-b border-slate-100">
+                          <td colSpan={10} className="p-5 border-b border-slate-100">
                             <div className="space-y-4 animate-fadeIn">
                               
                               {/* Notes */}
@@ -1170,6 +1482,39 @@ export default function JournalView({
                                 <p className="text-xs text-slate-700 leading-relaxed font-sans bg-white border rounded-xl p-3 shadow-3xs">
                                   {trade.notes || 'No notes added for this execution.'}
                                 </p>
+                              </div>
+
+                              {/* Checklist Breakdown */}
+                              <div className="space-y-1.5">
+                                <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider block">
+                                  Journaling Checklist Confluence Breakdown
+                                </span>
+                                {trade.journalingStatus === 'COMPLETE' ? (
+                                  <div className="bg-white border border-slate-150 rounded-xl p-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                    {journalRules.map(rule => {
+                                      const passed = trade.checklist && Boolean(trade.checklist[rule.id]);
+                                      return (
+                                        <div key={rule.id} className={`flex items-center gap-1.5 p-1.5 rounded-lg border text-2xs font-bold ${
+                                          passed ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
+                                        }`}>
+                                          {passed ? <CheckCircle2 size={12} className="text-emerald-600 shrink-0" /> : <X size={12} className="text-slate-350 shrink-0" />}
+                                          <span className="truncate">{rule.label}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-800 font-medium flex items-center justify-between flex-wrap gap-2">
+                                    <span>This trade has not been evaluated with the journaling checklist yet.</span>
+                                    <button
+                                      onClick={() => handleOpenJournalModal(trade)}
+                                      className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1"
+                                    >
+                                      <CheckSquare size={13} />
+                                      Score Checklist Now
+                                    </button>
+                                  </div>
+                                )}
                               </div>
 
                               {/* HTF and LTF Chart screenshots */}
@@ -1239,6 +1584,295 @@ export default function JournalView({
           </div>
         )}
       </div>
+
+      {/* Quick Journaling / Scoring Modal */}
+      {journalingTrade && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto animate-scaleUp">
+            <div className="flex justify-between items-start pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2 text-2xs font-bold text-purple-600 uppercase tracking-wider">
+                  <CheckSquare size={14} />
+                  Trade Journaling Checklist Evaluator
+                </div>
+                <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
+                  {journalingTrade.asset} ({journalingTrade.direction}) — {journalingTrade.date}
+                </h3>
+                <p className="text-xs text-slate-500 font-sans">
+                  Setup: <strong className="text-slate-800">{journalingTrade.setup}</strong> • PnL: <span className={journalingTrade.pnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>${journalingTrade.pnl}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setJournalingTrade(null)}
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg cursor-pointer transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Live Score Readout */}
+            <div className="bg-purple-50 border border-purple-200/80 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="text-2xs font-bold text-purple-700 uppercase tracking-wider">Confluence Score</div>
+                <div className="text-2xl font-black text-purple-900 font-mono">
+                  {journalRules.filter(r => journalingChecklist[r.id]).length} / {journalRules.length}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-extrabold text-purple-800">
+                  {journalRules.length > 0 ? Math.round((journalRules.filter(r => journalingChecklist[r.id]).length / journalRules.length) * 100) : 0}% Confluence
+                </div>
+                <span className="text-3xs text-purple-600 font-bold">
+                  {journalRules.filter(r => journalingChecklist[r.id]).length >= 6 ? '🌟 High Quality Setup' : '⚠️ Low Confluence Trade'}
+                </span>
+              </div>
+            </div>
+
+            {/* Checklist items */}
+            <div className="space-y-3">
+              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
+                Checklist Rules ({journalRules.length} items)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {journalRules.map(rule => {
+                  const isChecked = Boolean(journalingChecklist[rule.id]);
+                  return (
+                    <label
+                      key={rule.id}
+                      className={`flex items-start gap-2.5 p-3 rounded-xl border transition cursor-pointer text-xs ${
+                        isChecked
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleJournalRule(rule.id)}
+                        className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <div className="space-y-0.5">
+                        <div className="font-bold leading-tight">{rule.label}</div>
+                        {rule.description && (
+                          <div className={`text-4xs leading-normal ${isChecked ? 'text-purple-100' : 'text-slate-500'}`}>
+                            {rule.description}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mistakes reflections */}
+            <div className="space-y-2">
+              <label className="text-2xs font-extrabold text-slate-600 uppercase tracking-wider block">Psychology / Mistakes</label>
+              <div className="flex flex-wrap gap-1.5">
+                {AVAILABLE_MISTAKES.map(mistake => {
+                  const isSelected = journalingMistakes.includes(mistake);
+                  return (
+                    <button
+                      key={mistake}
+                      type="button"
+                      onClick={() => handleToggleJournalMistake(mistake)}
+                      className={`px-2.5 py-1 rounded-lg text-3xs font-bold border transition cursor-pointer ${
+                        isSelected
+                          ? mistake === 'None'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {mistake}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <label className="text-2xs font-extrabold text-slate-600 uppercase tracking-wider block">Reflections / Journaling Notes</label>
+              <textarea
+                value={journalingNotes}
+                onChange={(e) => setJournalingNotes(e.target.value)}
+                placeholder="Add execution reflections, details on exit strategy..."
+                rows={3}
+                className="w-full p-3 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-purple-500 font-sans"
+              />
+            </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setJournalingTrade(null)}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveJournalScore}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 size={14} />
+                Save & Mark Journaling Complete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Rules Modal */}
+      {showRulesModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto animate-scaleUp">
+            <div className="flex justify-between items-start pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2 text-2xs font-bold text-purple-600 uppercase tracking-wider">
+                  <Sliders size={14} />
+                  Rule Management System
+                </div>
+                <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
+                  Manage Trade Journaling Checklist Rules
+                </h3>
+                <p className="text-xs text-slate-500 font-sans">
+                  Add new rules, edit existing rules, or delete rules to customize your setup confluence checklist.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg cursor-pointer transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Add New Rule Form */}
+            <form onSubmit={handleCreateRuleSubmit} className="p-4 bg-purple-50/60 rounded-xl border border-purple-200/80 space-y-3">
+              <span className="text-2xs font-extrabold text-purple-800 uppercase tracking-wider block">
+                Add New Checklist Rule
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Rule Title (e.g., HTF Order Block Touch)"
+                  value={newRuleLabel}
+                  onChange={(e) => setNewRuleLabel(e.target.value)}
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Description (Optional)"
+                  value={newRuleDesc}
+                  onChange={(e) => setNewRuleDesc(e.target.value)}
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-3xs transition cursor-pointer flex items-center gap-1"
+                >
+                  <Plus size={14} />
+                  Add Rule
+                </button>
+              </div>
+            </form>
+
+            {/* Existing Rules List */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-2xs font-extrabold text-slate-500 uppercase tracking-wider">
+                  Active Rules ({journalRules.length})
+                </span>
+                <button
+                  onClick={onResetRules}
+                  className="text-3xs font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1 cursor-pointer transition"
+                  title="Reset rules to default 8 items"
+                >
+                  <RotateCcw size={11} />
+                  Reset Defaults
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {journalRules.map((rule, idx) => {
+                  const isEditing = editingRuleId === rule.id;
+                  return (
+                    <div key={rule.id} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3 hover:border-slate-300 transition">
+                      {isEditing ? (
+                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={editRuleLabel}
+                            onChange={(e) => setEditRuleLabel(e.target.value)}
+                            className="px-2.5 py-1 border border-purple-300 rounded-lg text-xs font-bold"
+                          />
+                          <input
+                            type="text"
+                            value={editRuleDesc}
+                            onChange={(e) => setEditRuleDesc(e.target.value)}
+                            className="px-2.5 py-1 border border-purple-300 rounded-lg text-xs"
+                            placeholder="Description"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2.5">
+                          <span className="text-3xs font-mono font-bold text-slate-400 mt-0.5">{idx + 1}.</span>
+                          <div>
+                            <div className="text-xs font-bold text-slate-800">{rule.label}</div>
+                            {rule.description && (
+                              <div className="text-3xs text-slate-500 font-sans">{rule.description}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isEditing ? (
+                          <button
+                            onClick={() => handleSaveEditRule(rule.id)}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-3xs font-bold rounded-lg cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleStartEditRule(rule)}
+                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg cursor-pointer transition"
+                            title="Edit Rule"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onDeleteRule(rule.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                          title="Delete Rule"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-slate-100">
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

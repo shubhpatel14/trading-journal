@@ -24,8 +24,8 @@ import {
   Loader2,
   ClipboardCheck
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview } from './types';
-import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS } from './mockData';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule } from './types';
+import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES } from './mockData';
 
 // Import Firebase config & helpers
 import {
@@ -210,6 +210,44 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
   }, [weeklyReviews]);
+
+  // Journal Rules State with LocalStorage
+  const [journalRules, setJournalRules] = useState<JournalRule[]>(() => {
+    const saved = localStorage.getItem('TRADEPLAN_JOURNAL_RULES');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        return DEFAULT_JOURNAL_RULES;
+      }
+    }
+    return DEFAULT_JOURNAL_RULES;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('TRADEPLAN_JOURNAL_RULES', JSON.stringify(journalRules));
+  }, [journalRules]);
+
+  const handleAddJournalRule = (rule: Omit<JournalRule, 'id'>) => {
+    const newRule: JournalRule = {
+      ...rule,
+      id: `rule-${Date.now()}`
+    };
+    setJournalRules(prev => [...prev, newRule]);
+  };
+
+  const handleEditJournalRule = (id: string, updated: Partial<JournalRule>) => {
+    setJournalRules(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+  };
+
+  const handleDeleteJournalRule = (id: string) => {
+    setJournalRules(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleResetJournalRules = () => {
+    setJournalRules(DEFAULT_JOURNAL_RULES);
+  };
 
   const handleAddDailyReview = async (newReview: Omit<DailyReview, 'id' | 'createdAt'>) => {
     const rev: DailyReview = {
@@ -1361,6 +1399,11 @@ export default function App() {
             trades={filteredTrades}
             accounts={accounts}
             selectedAccountId={selectedAccountId}
+            journalRules={journalRules}
+            onAddRule={handleAddJournalRule}
+            onEditRule={handleEditJournalRule}
+            onDeleteRule={handleDeleteJournalRule}
+            onResetRules={handleResetJournalRules}
             onAddTrade={handleAddTrade}
             onEditTrade={handleEditTrade}
             onDeleteTrade={handleDeleteTrade}
