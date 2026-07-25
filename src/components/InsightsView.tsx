@@ -68,6 +68,62 @@ interface MetricInfo {
 }
 
 const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
+  net_pnl: {
+    title: 'Net Realized P&L',
+    category: 'Financial Analytics',
+    whatIsIt: 'The overall dollar profit or loss realized across all closed trades in the selected time period.',
+    whyItMatters: 'Net PnL directly measures portfolio performance and total return on capital over the specified timeframe.',
+    formula: 'Gross Profits - Gross Losses',
+    benchmarks: [
+      { label: 'Negative PnL', range: '< $0', status: 'bad' },
+      { label: 'Capital Preservation', range: '$0 - $1,000', status: 'average' },
+      { label: 'High Yield Profit', range: '> $1,000+', status: 'good' }
+    ],
+    interpretation: 'A positive Net PnL indicates positive expectancy and net capital growth during this timeframe.',
+    example: 'Generating +$4,500 net profit across 25 trades in the last 30 days.',
+    tips: [
+      'Focus on process quality rather than daily PnL fluctuations.',
+      'Protect peak profits using strict daily drawdown limits.'
+    ],
+    relatedMetrics: ['Profit Factor', 'Win Rate %', 'System Expectancy']
+  },
+  avg_win_loss: {
+    title: 'Average Win vs Average Loss',
+    category: 'Risk/Reward Analytics',
+    whatIsIt: 'Compares the average profit amount of winning trades against the average loss amount of losing trades.',
+    whyItMatters: 'Achieving an average win larger than your average loss ensures asymmetrical risk reward edge.',
+    formula: 'Payoff Ratio = Average Win ($) / Average Loss ($)',
+    benchmarks: [
+      { label: 'Inverted Payoff', range: '< 1.0 Ratio', status: 'bad' },
+      { label: 'Balanced Payoff', range: '1.0 - 1.5 Ratio', status: 'average' },
+      { label: 'Asymmetrical Edge', range: '1.5+ Ratio', status: 'good' }
+    ],
+    interpretation: 'A Payoff Ratio of 2.0 means your average winning trade is twice as large as your average losing trade.',
+    example: 'Avg Win = $600, Avg Loss = $300. Payoff Ratio = 600 / 300 = 2.0.',
+    tips: [
+      'Cut losing trades promptly when setup invalidation occurs.',
+      'Let winners run to predetermined key target zones.'
+    ],
+    relatedMetrics: ['Planned R:R', 'Expectancy', 'Win Rate %']
+  },
+  execution_volume: {
+    title: 'Trade Execution Volume',
+    category: 'Activity Analytics',
+    whatIsIt: 'The total number of executed and closed trades logged within the selected timeframe.',
+    whyItMatters: 'Helps monitor trading frequency, overtrading tendencies, and sample size validity.',
+    benchmarks: [
+      { label: 'Insufficient Sample', range: '< 10 Trades', status: 'average' },
+      { label: 'Optimal Sample', range: '15 - 50 Trades', status: 'good' },
+      { label: 'Overtrading Danger', range: '> 100 Trades/mo', status: 'bad' }
+    ],
+    interpretation: 'A statistical sample size of at least 20-30 trades is needed to evaluate true strategy expectancy.',
+    example: '30 trades logged over a 30-day period indicates a steady 1 trade per day execution rate.',
+    tips: [
+      'Avoid force-trading when market conditions lack confluence.',
+      'Quality of setups always trumps quantity of trades.'
+    ],
+    relatedMetrics: ['Discipline Score', 'Win Rate %', 'Profit Factor']
+  },
   discipline_score: {
     title: 'Discipline Score',
     category: 'Behavioral Analytics',
@@ -614,6 +670,8 @@ const DEFAULT_METRIC_INFO: MetricInfo = {
   ]
 };
 
+export type TimePeriod = 'today' | '7d' | '30d' | '3m' | '1y' | 'all';
+
 // ============================================================================
 // MAIN COMPONENT: INSIGHTSVIEW
 // ============================================================================
@@ -623,6 +681,9 @@ export default function InsightsView({
   selectedAccountId, 
   accounts 
 }: InsightsViewProps) {
+  // Time Period Filter State
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('30d');
+
   // Modal state for Universal ℹ️ Info buttons
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
   
@@ -659,14 +720,57 @@ export default function InsightsView({
     return `${sign}${symbol}${formatted}`;
   };
 
-  // Sort trades chronologically
+  // Filter trades based on selected time period
+  const filteredTrades = useMemo(() => {
+    if (timePeriod === 'all') return trades;
+    if (trades.length === 0) return [];
+
+    const now = new Date();
+    let refTime = now.getTime();
+
+    // Check if any trade date is in the future relative to system time
+    trades.forEach(t => {
+      if (t.date) {
+        const tTime = new Date(`${t.date}T${t.time || '12:00'}`).getTime();
+        if (!isNaN(tTime) && tTime > refTime) {
+          refTime = tTime;
+        }
+      }
+    });
+
+    return trades.filter(t => {
+      if (!t.date) return false;
+      const tradeDateObj = new Date(`${t.date}T${t.time || '12:00'}`);
+      const tradeTime = tradeDateObj.getTime();
+      if (isNaN(tradeTime)) return false;
+
+      const diffDays = (refTime - tradeTime) / (1000 * 60 * 60 * 24);
+
+      switch (timePeriod) {
+        case 'today':
+          return diffDays <= 1.0;
+        case '7d':
+          return diffDays <= 7.0;
+        case '30d':
+          return diffDays <= 30.0;
+        case '3m':
+          return diffDays <= 90.0;
+        case '1y':
+          return diffDays <= 365.0;
+        default:
+          return true;
+      }
+    });
+  }, [trades, timePeriod]);
+
+  // Sort filtered trades chronologically
   const sortedTrades = useMemo(() => {
-    return [...trades].sort((a, b) => {
+    return [...filteredTrades].sort((a, b) => {
       const timeA = new Date(`${a.date}T${a.time || '00:00'}`).getTime();
       const timeB = new Date(`${b.date}T${b.time || '00:00'}`).getTime();
       return timeA - timeB;
     });
-  }, [trades]);
+  }, [filteredTrades]);
 
   // 1. EXECUTIVE SUMMARY & KPI CALCULATIONS
   const kpis = useMemo(() => {
@@ -686,12 +790,15 @@ export default function InsightsView({
         lossCount: 0,
         beCount: 0,
         totalPnl: 0,
+        netReturnPct: 0,
         bestSession: 'N/A',
         bestAsset: 'N/A',
         grossProfit: 0,
         grossLoss: 0,
         avgWin: 0,
-        avgLoss: 0
+        avgLoss: 0,
+        payoffRatio: 0,
+        totalTrades: 0
       };
     }
 
@@ -774,6 +881,8 @@ export default function InsightsView({
     const avgRiskReward = validRrCount > 0 ? totalRrSum / validRrCount : 0;
     const disciplineScore = Math.max(0, ((totalTrades - tradesWithMistakes) / totalTrades) * 100);
     const avgRMultiple = avgLoss > 0 ? (expectancy / avgLoss) : 0;
+    const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? 99.9 : 0;
+    const netReturnPct = activeInitialCapital > 0 ? (totalPnl / activeInitialCapital) * 100 : 0;
 
     // Best session
     let bestSession = 'N/A';
@@ -809,12 +918,15 @@ export default function InsightsView({
       lossCount,
       beCount,
       totalPnl,
+      netReturnPct,
       avgWin,
       avgLoss,
+      payoffRatio,
       bestSession,
       bestAsset,
       grossProfit,
-      grossLoss
+      grossLoss,
+      totalTrades
     };
   }, [sortedTrades, activeInitialCapital]);
 
@@ -1019,7 +1131,7 @@ export default function InsightsView({
     return list;
   }, [sortedTrades]);
 
-  // 8. ADVANCED INSTITUTIONAL STATISTICS
+  // 8. ADVANCED INSTITUTIONAL STATISTICS (MATHEMATICALLY REVISED)
   const advancedStats = useMemo(() => {
     const totalTrades = sortedTrades.length;
     if (totalTrades === 0) {
@@ -1028,7 +1140,9 @@ export default function InsightsView({
         sharpe: 0,
         sortino: 0,
         calmar: 0,
-        kellyPct: 0,
+        kellyFullPct: 0,
+        kellyHalfPct: 0,
+        recommendedRiskPct: 0,
         ulcerIndex: 0,
         payoffRatio: 0,
         riskOfRuin: 0,
@@ -1043,29 +1157,49 @@ export default function InsightsView({
     const pnls = sortedTrades.map(t => t.pnl);
     const avgPnL = kpis.totalPnl / totalTrades;
     
-    // Standard deviation
+    // Standard deviation of trade PnL
     const variance = pnls.reduce((sum, p) => sum + Math.pow(p - avgPnL, 2), 0) / totalTrades;
     const stdDevPnL = Math.sqrt(variance);
 
-    // Downside deviation
-    const negativePnls = pnls.filter(p => p < 0);
-    const downsideVariance = negativePnls.reduce((sum, p) => sum + Math.pow(p - avgPnL, 2), 0) / (negativePnls.length || 1);
-    const downsideStdDev = Math.sqrt(downsideVariance);
+    // Downside deviation (measuring squared losses relative to total trades)
+    const lossPnls = pnls.filter(p => p < 0);
+    const downsideSum = lossPnls.reduce((sum, p) => sum + Math.pow(p, 2), 0);
+    const downsideStdDev = Math.sqrt(downsideSum / totalTrades);
 
+    // System Quality Number (SQN) by Van Tharp: (Mean PnL / StdDev PnL) * sqrt(Trades)
     const sqn = stdDevPnL > 0 ? (avgPnL / stdDevPnL) * Math.sqrt(totalTrades) : 0;
-    const sharpe = stdDevPnL > 0 ? (avgPnL / stdDevPnL) : 0;
-    const sortino = downsideStdDev > 0 ? (avgPnL / downsideStdDev) : 0;
 
-    const netReturnPct = (kpis.totalPnl / activeInitialCapital) * 100;
+    // Sharpe Ratio (Trade Level Annualized over sqrt(252 trading sessions))
+    const sharpe = stdDevPnL > 0 ? (avgPnL / stdDevPnL) * Math.sqrt(Math.min(totalTrades, 252)) : 0;
+
+    // Sortino Ratio (Downside volatility)
+    const sortino = downsideStdDev > 0 ? (avgPnL / downsideStdDev) * Math.sqrt(Math.min(totalTrades, 252)) : avgPnL > 0 ? 99.9 : 0;
+
+    // Calmar Ratio: Annualized Return % / Max Drawdown %
+    const netReturnPct = activeInitialCapital > 0 ? (kpis.totalPnl / activeInitialCapital) * 100 : 0;
     const calmar = kpis.maxDrawdownPct > 0 ? netReturnPct / kpis.maxDrawdownPct : netReturnPct > 0 ? 99.9 : 0;
-    const payoffRatio = kpis.avgLoss > 0 ? kpis.avgWin / kpis.avgLoss : 0;
 
-    const winRatioDecimal = kpis.winRate / 100;
-    const kellyPct = payoffRatio > 0 ? (winRatioDecimal - ((1 - winRatioDecimal) / payoffRatio)) * 100 : 0;
+    // Payoff Ratio: Avg Win / Avg Loss
+    const payoffRatio = kpis.avgLoss > 0 ? kpis.avgWin / kpis.avgLoss : kpis.avgWin > 0 ? 99.9 : 0;
 
-    const drawdownsSqSum = equityAnalyticsData.reduce((sum, pt) => sum + Math.pow(pt.drawdownPct, 2), 0);
-    const ulcerIndex = Math.sqrt(drawdownsSqSum / totalTrades);
+    // Kelly Criterion % (Full Kelly & Half Kelly)
+    // Formula: K = W - ((1 - W) / R)
+    const W = kpis.winRate / 100; // Win rate decimal (e.g. 0.515)
+    const L = 1 - W; // Loss rate decimal (e.g. 0.485)
+    const R = payoffRatio > 0 ? payoffRatio : 1.0;
+    
+    let rawKelly = W - (L / R);
+    if (isNaN(rawKelly) || !isFinite(rawKelly)) rawKelly = 0;
 
+    const kellyFullPct = Math.max(0, Math.min(100, rawKelly * 100)); // Cap between 0% and 100%
+    const kellyHalfPct = kellyFullPct / 2; // Half-Kelly
+    const recommendedRiskPct = Math.max(0.5, Math.min(5.0, kellyHalfPct)); // Institutional risk recommendation (0.5% to 5.0%)
+
+    // Ulcer Index: sqrt(sum(Drawdown % ^ 2) / N)
+    const drawdownsSqSum = equityAnalyticsData.reduce((sum, pt) => sum + Math.pow(Math.abs(pt.drawdownPct), 2), 0);
+    const ulcerIndex = Math.sqrt(drawdownsSqSum / (totalTrades || 1));
+
+    // Consecutive Wins & Losses
     let maxWins = 0;
     let maxLosses = 0;
     let curWins = 0;
@@ -1088,15 +1222,25 @@ export default function InsightsView({
       }
     });
 
-    const w = winRatioDecimal;
-    const riskOfRuin = w > 0.5 ? Math.pow((1 - w) / (1 + w), 10) * 100 : 99.9;
+    // Balsara Risk of Ruin calculation
+    let riskOfRuin = 0;
+    if (rawKelly <= 0) {
+      riskOfRuin = 99.9; // Negative expectancy system has high risk of ruin
+    } else {
+      const advantage = rawKelly;
+      // 20 risk units assumption (20% drawdown at 1% risk per trade)
+      const ruinBase = (1 - advantage) / (1 + advantage);
+      riskOfRuin = Math.pow(Math.max(0, ruinBase), 20) * 100;
+    }
 
     return {
       sqn,
       sharpe,
       sortino,
       calmar,
-      kellyPct,
+      kellyFullPct,
+      kellyHalfPct,
+      recommendedRiskPct,
       ulcerIndex,
       payoffRatio,
       riskOfRuin: Math.min(99.9, Math.max(0, riskOfRuin)),
@@ -1292,213 +1436,277 @@ export default function InsightsView({
         </div>
       </div>
 
-      {/* SECTION 1: EXECUTIVE SUMMARY KPI CARDS */}
-      <section className="space-y-3">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest font-sans flex items-center gap-1.5">
-            <Activity size={14} className="text-blue-600" />
-            Section 1 — Executive Summary KPIs
-          </h2>
-          <span className="text-3xs text-slate-400 font-mono">10 Institutional Metrics</span>
+      {/* TIME PERIOD SELECTOR BAR */}
+      <div className="bg-white border border-slate-100 p-3.5 rounded-2xl shadow-3xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-3xs font-extrabold text-slate-500 font-mono tracking-widest uppercase">
+            TIME PERIOD
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: 'today', label: 'Today' },
+              { id: '7d', label: '7 Days' },
+              { id: '30d', label: '30 Days' },
+              { id: '3m', label: '3 Months' },
+              { id: '1y', label: '1 Year' },
+              { id: 'all', label: 'All Time' }
+            ].map((period) => {
+              const isActive = timePeriod === period.id;
+              return (
+                <button
+                  key={period.id}
+                  id={`timeframe-btn-${period.id}`}
+                  onClick={() => setTimePeriod(period.id as TimePeriod)}
+                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-md active:scale-95'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200/60'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-          
-          {/* Card 1: Discipline Score */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Discipline Score</span>
-              <button onClick={() => openInfoModal('discipline_score')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className={`text-xl font-black font-mono ${kpis.disciplineScore >= 80 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {kpis.disciplineScore.toFixed(0)}%
-              </span>
-              <span className="text-4xs font-extrabold px-1.5 py-0.5 rounded uppercase bg-blue-50 text-blue-700">
-                {kpis.disciplineScore >= 85 ? 'Institutional' : 'Needs Edge'}
-              </span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5 flex justify-between items-center">
-              <span>Rule adherence rate</span>
-              <ArrowUpRight size={11} className="text-emerald-500" />
-            </div>
-          </div>
-
-          {/* Card 2: Best Trading Session */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Alpha Session</span>
-              <button onClick={() => openInfoModal('best_session')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-base font-black font-sans text-blue-700 uppercase">
-                {kpis.bestSession}
-              </span>
-              <span className="text-4xs font-bold text-slate-500">Top PnL</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Highest win probability window
-            </div>
-          </div>
-
-          {/* Card 3: Best Asset */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Alpha Asset</span>
-              <button onClick={() => openInfoModal('best_asset')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-slate-850">
-                {kpis.bestAsset}
-              </span>
-              <span className="text-4xs font-bold text-emerald-600">Optimal</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Primary profit contributor
-            </div>
-          </div>
-
-          {/* Card 4: System Expectancy */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">System EV</span>
-              <button onClick={() => openInfoModal('system_expectancy')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className={`text-lg font-black font-mono ${kpis.expectancy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {formatVal(kpis.expectancy, { showSign: true })}
-              </span>
-              <span className="text-4xs text-slate-400">/trade</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Expected value per execution
-            </div>
-          </div>
-
-          {/* Card 5: Maximum Drawdown */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Max Drawdown</span>
-              <button onClick={() => openInfoModal('max_drawdown')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-rose-600">
-                {kpis.maxDrawdownPct.toFixed(1)}%
-              </span>
-              <span className="text-4xs text-slate-400 font-mono">{formatVal(kpis.maxDrawdownUSD)}</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Peak-to-valley risk depth
-            </div>
-          </div>
-
-          {/* Card 6: Profit Factor */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Profit Factor</span>
-              <button onClick={() => openInfoModal('profit_factor')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-slate-850">
-                {kpis.profitFactor === 99.9 ? '∞' : kpis.profitFactor.toFixed(2)}
-              </span>
-              <span className="text-4xs font-bold text-blue-600">Wins/Losses</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Gross gains / Gross losses
-            </div>
-          </div>
-
-          {/* Card 7: Win Rate */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Win Rate %</span>
-              <button onClick={() => openInfoModal('win_rate')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-emerald-600">
-                {kpis.winRate.toFixed(1)}%
-              </span>
-              <span className="text-4xs font-mono text-slate-500">{kpis.winCount}W/{kpis.lossCount}L</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Percentage of winning logs
-            </div>
-          </div>
-
-          {/* Card 8: Average R Multiple */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Average R</span>
-              <button onClick={() => openInfoModal('avg_r_multiple')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-slate-850">
-                +{kpis.avgRMultiple.toFixed(2)}R
-              </span>
-              <span className="text-4xs font-bold text-slate-500">Expectancy R</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Return relative to 1R risk
-            </div>
-          </div>
-
-          {/* Card 9: Recovery Factor */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Recovery Factor</span>
-              <button onClick={() => openInfoModal('recovery_factor')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-slate-850">
-                {kpis.recoveryFactor === 99.9 ? '∞' : kpis.recoveryFactor.toFixed(2)}
-              </span>
-              <span className="text-4xs font-bold text-emerald-600">Net/DD</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Net profit / Max drawdown
-            </div>
-          </div>
-
-          {/* Card 10: Average Risk Reward */}
-          <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
-            <div className="flex justify-between items-start text-slate-400">
-              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Planned R:R</span>
-              <button onClick={() => openInfoModal('avg_risk_reward')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
-                <Info size={13} />
-              </button>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <span className="text-lg font-black font-mono text-slate-850">
-                1:{kpis.avgRiskReward.toFixed(2)}
-              </span>
-              <span className="text-4xs font-bold text-blue-600">Planned Target</span>
-            </div>
-            <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
-              Average planned Risk:Reward
-            </div>
-          </div>
-
+        <div className="text-3xs text-slate-400 font-mono flex items-center gap-1.5">
+          <Clock size={12} className="text-slate-400" />
+          <span>Active Filter: <strong className="text-slate-700">{sortedTrades.length}</strong> of <strong className="text-slate-700">{trades.length}</strong> trades</span>
         </div>
-      </section>
+      </div>
+
+      {sortedTrades.length === 0 ? (
+        <div className="bg-white border border-slate-100 p-12 rounded-3xl text-center space-y-4 max-w-lg mx-auto shadow-xs">
+          <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+            <Clock size={24} />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-bold text-slate-850">No trades recorded in this timeframe</h3>
+            <p className="text-xs text-slate-500 font-sans leading-relaxed">
+              No executed trades match the selected timeframe (<strong className="text-blue-600 font-mono">{timePeriod.toUpperCase()}</strong>). Try selecting another time period such as <strong className="text-blue-600">30 Days</strong> or <strong className="text-blue-600">All Time</strong>.
+            </p>
+          </div>
+          <button
+            onClick={() => setTimePeriod('all')}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
+          >
+            Show All Time Trades ({trades.length})
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* SECTION 1: EXECUTIVE SUMMARY KPI CARDS */}
+          <section className="space-y-3">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest font-sans flex items-center gap-1.5">
+                <Activity size={14} className="text-blue-600" />
+                Section 1 — Executive Summary KPIs
+              </h2>
+              <span className="text-3xs text-slate-400 font-mono">10 Institutional Metrics</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+              
+              {/* Card 1: Net Realized P&L */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Net Realized P&L</span>
+                  <button onClick={() => openInfoModal('net_pnl')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className={`text-xl font-black font-mono ${kpis.totalPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatVal(kpis.totalPnl, { showSign: true })}
+                  </span>
+                  <span className={`text-4xs font-extrabold px-1.5 py-0.5 rounded uppercase ${kpis.netReturnPct >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                    {kpis.netReturnPct >= 0 ? '+' : ''}{kpis.netReturnPct.toFixed(1)}% Return
+                  </span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5 flex justify-between items-center">
+                  <span>Period net return</span>
+                  <ArrowUpRight size={11} className={kpis.totalPnl >= 0 ? 'text-emerald-500' : 'text-rose-500'} />
+                </div>
+              </div>
+
+              {/* Card 2: Win Rate % */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Win Rate %</span>
+                  <button onClick={() => openInfoModal('win_rate')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xl font-black font-mono text-emerald-600">
+                    {kpis.winRate.toFixed(1)}%
+                  </span>
+                  <span className="text-4xs font-mono text-slate-500 font-bold">{kpis.winCount}W/{kpis.lossCount}L/{kpis.beCount}BE</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Percentage of winning logs
+                </div>
+              </div>
+
+              {/* Card 3: System Expectancy */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">System EV</span>
+                  <button onClick={() => openInfoModal('system_expectancy')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className={`text-lg font-black font-mono ${kpis.expectancy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatVal(kpis.expectancy, { showSign: true })}
+                  </span>
+                  <span className="text-4xs text-slate-400">/trade</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Expected value per execution
+                </div>
+              </div>
+
+              {/* Card 4: Profit Factor */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Profit Factor</span>
+                  <button onClick={() => openInfoModal('profit_factor')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-black font-mono text-slate-850">
+                    {kpis.profitFactor === 99.9 ? '∞' : kpis.profitFactor.toFixed(2)}
+                  </span>
+                  <span className="text-4xs font-bold text-blue-600">Gross Wins/Losses</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Gross gains / Gross losses
+                </div>
+              </div>
+
+              {/* Card 5: Avg Win vs Avg Loss */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Avg Win / Loss</span>
+                  <button onClick={() => openInfoModal('avg_win_loss')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xs font-black font-mono text-slate-850">
+                    <span className="text-emerald-600">{formatVal(kpis.avgWin)}</span> / <span className="text-rose-600">{formatVal(kpis.avgLoss)}</span>
+                  </span>
+                  <span className="text-4xs font-bold text-blue-700 font-mono">
+                    {kpis.payoffRatio === 99.9 ? '∞' : `${kpis.payoffRatio.toFixed(2)} R`}
+                  </span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Payoff ratio asymmetry
+                </div>
+              </div>
+
+              {/* Card 6: Maximum Drawdown */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Max Drawdown</span>
+                  <button onClick={() => openInfoModal('max_drawdown')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-black font-mono text-rose-600">
+                    {kpis.maxDrawdownPct.toFixed(1)}%
+                  </span>
+                  <span className="text-4xs text-slate-400 font-mono">{formatVal(kpis.maxDrawdownUSD)}</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Peak-to-valley risk depth
+                </div>
+              </div>
+
+              {/* Card 7: Discipline Score */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Discipline Score</span>
+                  <button onClick={() => openInfoModal('discipline_score')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className={`text-xl font-black font-mono ${kpis.disciplineScore >= 80 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {kpis.disciplineScore.toFixed(0)}%
+                  </span>
+                  <span className="text-4xs font-extrabold px-1.5 py-0.5 rounded uppercase bg-blue-50 text-blue-700">
+                    {kpis.disciplineScore >= 85 ? 'Institutional' : 'Needs Edge'}
+                  </span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5 flex justify-between items-center">
+                  <span>Rule adherence rate</span>
+                  <ArrowUpRight size={11} className="text-emerald-500" />
+                </div>
+              </div>
+
+              {/* Card 8: Best Trading Session */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Alpha Session</span>
+                  <button onClick={() => openInfoModal('best_session')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-base font-black font-sans text-blue-700 uppercase">
+                    {kpis.bestSession}
+                  </span>
+                  <span className="text-4xs font-bold text-slate-500">Top PnL</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Highest win probability window
+                </div>
+              </div>
+
+              {/* Card 9: Best Asset */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Alpha Asset</span>
+                  <button onClick={() => openInfoModal('best_asset')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-black font-mono text-slate-850">
+                    {kpis.bestAsset}
+                  </span>
+                  <span className="text-4xs font-bold text-emerald-600">Optimal</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Primary profit contributor
+                </div>
+              </div>
+
+              {/* Card 10: Execution Volume */}
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-3xs space-y-2 relative group hover:border-blue-300 transition duration-150">
+                <div className="flex justify-between items-start text-slate-400">
+                  <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Trade Volume</span>
+                  <button onClick={() => openInfoModal('execution_volume')} className="text-slate-400 hover:text-blue-600 cursor-pointer p-0.5" title="View Metric Explanation ℹ️">
+                    <Info size={13} />
+                  </button>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-black font-mono text-slate-850">
+                    {kpis.totalTrades}
+                  </span>
+                  <span className="text-4xs font-bold text-slate-500 font-mono">Executions</span>
+                </div>
+                <div className="text-4xs text-slate-400 font-sans border-t border-slate-50 pt-1.5">
+                  Sample size in period
+                </div>
+              </div>
+
+            </div>
+          </section>
 
       {/* SECTION 2: EQUITY ANALYTICS */}
       <section className="space-y-4">
@@ -2019,7 +2227,7 @@ export default function InsightsView({
                   <td className="py-3 px-4 text-slate-500">2.0+ (Good) / 3.0+ (Excellent)</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
-                      advancedStats.sqn >= 2.0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                      advancedStats.sqn >= 3.0 ? 'bg-emerald-50 text-emerald-700' : advancedStats.sqn >= 2.0 ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'
                     }`}>
                       {advancedStats.sqn >= 3.0 ? 'EXCELLENT' : advancedStats.sqn >= 2.0 ? 'GOOD' : 'AVERAGE'}
                     </span>
@@ -2033,14 +2241,14 @@ export default function InsightsView({
 
                 {/* Sharpe Ratio */}
                 <tr className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sharpe Ratio</td>
+                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sharpe Ratio (Annualized)</td>
                   <td className="py-3 px-4 font-bold text-slate-850">{advancedStats.sharpe.toFixed(2)}</td>
-                  <td className="py-3 px-4 text-slate-500">2.0+ (Hedge Fund Standard)</td>
+                  <td className="py-3 px-4 text-slate-500">1.0+ (Good) / 2.0+ (Hedge Fund Standard)</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
-                      advancedStats.sharpe >= 2.0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                      advancedStats.sharpe >= 2.0 ? 'bg-emerald-50 text-emerald-700' : advancedStats.sharpe >= 1.0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
                     }`}>
-                      {advancedStats.sharpe >= 2.0 ? 'INSTITUTIONAL' : 'STANDARD'}
+                      {advancedStats.sharpe >= 2.0 ? 'INSTITUTIONAL' : advancedStats.sharpe >= 1.0 ? 'GOOD' : 'STANDARD'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
@@ -2052,14 +2260,16 @@ export default function InsightsView({
 
                 {/* Sortino Ratio */}
                 <tr className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sortino Ratio (Downside)</td>
-                  <td className="py-3 px-4 font-bold text-slate-850">{advancedStats.sortino.toFixed(2)}</td>
-                  <td className="py-3 px-4 text-slate-500">3.0+ (Low Downside Volatility)</td>
+                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sortino Ratio (Downside Risk)</td>
+                  <td className="py-3 px-4 font-bold text-slate-850">
+                    {advancedStats.sortino === 99.9 ? '∞' : advancedStats.sortino.toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4 text-slate-500">1.5+ (Good) / 3.0+ (Low Downside Risk)</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
-                      advancedStats.sortino >= 3.0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'
+                      advancedStats.sortino >= 3.0 ? 'bg-emerald-50 text-emerald-700' : advancedStats.sortino >= 1.5 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
                     }`}>
-                      {advancedStats.sortino >= 3.0 ? 'ROBUST' : 'MODERATE'}
+                      {advancedStats.sortino >= 3.0 ? 'ROBUST' : advancedStats.sortino >= 1.5 ? 'GOOD' : 'MODERATE'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
@@ -2069,14 +2279,18 @@ export default function InsightsView({
                   </td>
                 </tr>
 
-                {/* Kelly % */}
+                {/* Kelly Criterion % */}
                 <tr className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Kelly Criterion % (Optimal Risk)</td>
-                  <td className="py-3 px-4 font-bold text-blue-700">{advancedStats.kellyPct.toFixed(1)}%</td>
-                  <td className="py-3 px-4 text-slate-500">Half-Kelly Recommended (1% - 5%)</td>
+                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Kelly Criterion % (Optimal Risk Size)</td>
+                  <td className="py-3 px-4 font-bold text-blue-700">
+                    {advancedStats.kellyFullPct.toFixed(1)}% <span className="text-slate-400 font-normal">({advancedStats.kellyHalfPct.toFixed(1)}% Half-Kelly)</span>
+                  </td>
+                  <td className="py-3 px-4 text-slate-500">Half-Kelly Recommended (1.0% - 5.0% max)</td>
                   <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded text-4xs font-black uppercase bg-blue-50 text-blue-700">
-                      OPTIMAL SIZE
+                    <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
+                      advancedStats.kellyHalfPct > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                    }`}>
+                      {advancedStats.kellyHalfPct > 0 ? `USE ${advancedStats.recommendedRiskPct.toFixed(1)}% RISK` : 'NO EDGE'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
@@ -2089,7 +2303,9 @@ export default function InsightsView({
                 {/* Payoff Ratio */}
                 <tr className="hover:bg-slate-50/50">
                   <td className="py-3 px-4 font-bold font-sans text-slate-900">Payoff Ratio (Avg Win / Avg Loss)</td>
-                  <td className="py-3 px-4 font-bold text-emerald-600">{advancedStats.payoffRatio.toFixed(2)}</td>
+                  <td className="py-3 px-4 font-bold text-emerald-600">
+                    {advancedStats.payoffRatio === 99.9 ? '∞' : advancedStats.payoffRatio.toFixed(2)}
+                  </td>
                   <td className="py-3 px-4 text-slate-500">1.50+ (Asymmetrical Advantage)</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
@@ -2108,11 +2324,13 @@ export default function InsightsView({
                 {/* Risk of Ruin */}
                 <tr className="hover:bg-slate-50/50">
                   <td className="py-3 px-4 font-bold font-sans text-slate-900">Risk of Ruin %</td>
-                  <td className="py-3 px-4 font-bold text-emerald-600">{advancedStats.riskOfRuin.toFixed(2)}%</td>
+                  <td className="py-3 px-4 font-bold text-slate-850">{advancedStats.riskOfRuin.toFixed(2)}%</td>
                   <td className="py-3 px-4 text-slate-500">&lt; 1.0% (Capital Preserved)</td>
                   <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded text-4xs font-black uppercase bg-emerald-50 text-emerald-700">
-                      ZERO RUIN RISK
+                    <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
+                      advancedStats.riskOfRuin < 1.0 ? 'bg-emerald-50 text-emerald-700' : advancedStats.riskOfRuin < 10.0 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+                    }`}>
+                      {advancedStats.riskOfRuin < 1.0 ? 'MINIMAL RUIN RISK' : advancedStats.riskOfRuin < 10.0 ? 'MODERATE RISK' : 'HIGH RUIN RISK'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
@@ -2128,8 +2346,10 @@ export default function InsightsView({
                   <td className="py-3 px-4 font-bold text-slate-850">{advancedStats.ulcerIndex.toFixed(2)}</td>
                   <td className="py-3 px-4 text-slate-500">&lt; 3.0 (Low Psychological Stress)</td>
                   <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded text-4xs font-black uppercase bg-blue-50 text-blue-700">
-                      LOW STRESS
+                    <span className={`px-2 py-0.5 rounded text-4xs font-black uppercase ${
+                      advancedStats.ulcerIndex < 3.0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {advancedStats.ulcerIndex < 3.0 ? 'LOW STRESS' : 'MODERATE STRESS'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
@@ -2206,6 +2426,8 @@ export default function InsightsView({
         )}
 
       </section>
+      </>
+      )}
 
       {/* UNIVERSAL ℹ️ INFO MODAL DIALOG */}
       {activeInfoModalData && (
