@@ -22,6 +22,20 @@ const MONTHS = [
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const parseDateStr = (dateStr?: string) => {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const yyyy = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10) - 1;
+    const dd = parseInt(parts[2], 10);
+    if (!isNaN(yyyy) && !isNaN(mm) && !isNaN(dd)) {
+      return new Date(yyyy, mm, dd);
+    }
+  }
+  return new Date(dateStr);
+};
+
 const getLocalDateStr = (d: Date) => {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -37,8 +51,8 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
     // Check if there are trades, otherwise default to today
     if (trades.length > 0) {
       // Sort trades descending to find latest trade date and establish calendar baseline
-      const sorted = [...trades].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      return new Date(sorted[0].date);
+      const sorted = [...trades].sort((a, b) => parseDateStr(b.date).getTime() - parseDateStr(a.date).getTime());
+      return parseDateStr(sorted[0].date);
     }
     return new Date();
   });
@@ -121,7 +135,7 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
   const monthlyTotalPnl = React.useMemo(() => {
     let total = 0;
     trades.forEach(t => {
-      const tDate = new Date(t.date);
+      const tDate = parseDateStr(t.date);
       if (tDate.getFullYear() === year && tDate.getMonth() === month) {
         total += t.pnl;
       }
@@ -181,7 +195,7 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
           <div className="flex items-center gap-1">
             <span className="text-xl font-bold text-slate-800 font-mono">
               {trades.filter(t => {
-                const d = new Date(t.date);
+                const d = parseDateStr(t.date);
                 return d.getFullYear() === year && d.getMonth() === month;
               }).reduce((acc, t) => acc.add(t.date), new Set<string>()).size}
             </span>
@@ -197,7 +211,7 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
                 let wins = 0;
                 let losses = 0;
                 trades.forEach(t => {
-                  const d = new Date(t.date);
+                  const d = parseDateStr(t.date);
                   if (d.getFullYear() === year && d.getMonth() === month) {
                     if (t.pnl > 0) wins += t.pnl;
                     else losses += Math.abs(t.pnl);

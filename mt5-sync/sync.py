@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import MetaTrader5 as mt5
 import firebase_admin
@@ -106,8 +106,13 @@ for position_id, position_deals in positions.items():
 
     total_profit += net_profit
 
-    trade_date = datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d")
-    trade_month = datetime.fromtimestamp(first_open.time).strftime("%Y-%m")
+    from datetime import timezone
+
+    open_dt = datetime.fromtimestamp(first_open.time, tz=timezone.utc)
+    close_dt = datetime.fromtimestamp(last_close.time, tz=timezone.utc)
+
+    trade_date = close_dt.strftime("%Y-%m-%d")
+    trade_month = close_dt.strftime("%Y-%m")
 
     trade = {
         "id": str(position_id),
@@ -126,9 +131,9 @@ for position_id, position_deals in positions.items():
         "fee": round(fee, 2),
         "status": "WIN" if net_profit > 0 else "LOSS",
         "date": trade_date,
-        "time": datetime.fromtimestamp(first_open.time).strftime("%H:%M"),
-        "openTime": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d %H:%M:%S"),
-        "closeTime": datetime.fromtimestamp(last_close.time).strftime("%Y-%m-%d %H:%M:%S"),
+        "time": open_dt.strftime("%H:%M"),
+        "openTime": open_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "closeTime": close_dt.strftime("%Y-%m-%d %H:%M:%S"),
         "setup": "MT5 Import",
         "session": "",
         "notes": "Imported automatically from MT5",

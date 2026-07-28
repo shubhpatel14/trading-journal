@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import MetaTrader5 as mt5
 import firebase_admin
@@ -222,6 +222,11 @@ def run_sync():
 
         total_net_pnl += net_profit
 
+        open_dt = datetime.fromtimestamp(first_open.time, tz=timezone.utc)
+        close_dt = datetime.fromtimestamp(last_close.time, tz=timezone.utc)
+
+        trade_date = close_dt.strftime("%Y-%m-%d")
+
         # Maintain exact trade dictionary structure
         trade = {
             "id": str(pos_id),
@@ -243,10 +248,10 @@ def run_sync():
             "swap": round(swap, 2),
             "fee": round(fee, 2),
             "status": "WIN" if net_profit > 0.01 else ("LOSS" if net_profit < -0.01 else "BREAKEVEN"),
-            "date": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d"),
-            "time": datetime.fromtimestamp(first_open.time).strftime("%H:%M"),
-            "openTime": datetime.fromtimestamp(first_open.time).strftime("%Y-%m-%d %H:%M:%S"),
-            "closeTime": datetime.fromtimestamp(last_close.time).strftime("%Y-%m-%d %H:%M:%S"),
+            "date": trade_date,
+            "time": open_dt.strftime("%H:%M"),
+            "openTime": open_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "closeTime": close_dt.strftime("%Y-%m-%d %H:%M:%S"),
             "setup": "MT5 Import",
             "session": "",
             "notes": "Imported automatically via MT5",
