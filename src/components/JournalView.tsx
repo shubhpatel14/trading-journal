@@ -700,13 +700,44 @@ export default function JournalView({
 
       {/* Sync Status Notification Banner */}
       {syncStatusMsg && (
-        <div className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 animate-fadeIn shadow-3xs ${
+        <div className={`p-4 rounded-xl border text-xs font-semibold flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-fadeIn shadow-3xs ${
           syncStatusMsg.type === 'success' 
             ? 'bg-emerald-50 text-emerald-900 border-emerald-200/80' 
             : 'bg-rose-50 text-rose-900 border-rose-200/80'
         }`}>
-          <Sparkles size={15} className={syncStatusMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'} />
-          <span>{syncStatusMsg.text}</span>
+          <div className="flex items-start gap-2.5 flex-1">
+            <Sparkles size={16} className={`mt-0.5 shrink-0 ${syncStatusMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'}`} />
+            <div className="space-y-1">
+              <span className="font-bold block leading-relaxed">{syncStatusMsg.text}</span>
+              {syncStatusMsg.type === 'error' && (
+                <p className="text-3xs text-rose-700 font-sans leading-relaxed">
+                  Web apps hosted on cloud servers (like Render) cannot access your local PC Desktop MT5 terminal directly. Download the project code to your PC to run MT5 sync locally!
+                </p>
+              )}
+            </div>
+          </div>
+
+          {syncStatusMsg.type === 'error' && (
+            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+              <a
+                href="https://github.com/shubhpatel14/Journal/archive/refs/heads/main.zip"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 md:flex-none px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-2xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+              >
+                <Download size={13} />
+                Download ZIP File
+              </a>
+              <a
+                href="https://github.com/shubhpatel14/Journal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 md:flex-none px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-100 text-rose-800 rounded-lg text-2xs font-bold transition flex items-center justify-center gap-1"
+              >
+                GitHub Repo
+              </a>
+            </div>
+          )}
         </div>
       )}
 
