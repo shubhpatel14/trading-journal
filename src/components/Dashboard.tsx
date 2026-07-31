@@ -13,8 +13,9 @@ import {
   Play,
   Sparkles,
   Zap,
+  Coins
 } from 'lucide-react';
-import { Trade, TradePlan, PerformanceMetrics } from '../types';
+import { Trade, TradePlan, PerformanceMetrics, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 interface DashboardProps {
   trades: Trade[];
@@ -123,6 +124,8 @@ export default function Dashboard({
         riskRewardRatio: 0,
         maxDrawdown: 0,
         totalPnl: 0,
+        totalFees: 0,
+        grossPnl: 0,
         avgWin: 0,
         avgLoss: 0,
         winCount: 0,
@@ -131,6 +134,8 @@ export default function Dashboard({
     }
 
     let totalPnl = 0;
+    let totalGrossPnl = 0;
+    let totalFees = 0;
     let winCount = 0;
     let lossCount = 0;
     let totalWinsPnl = 0;
@@ -148,8 +153,12 @@ export default function Dashboard({
     });
 
     sortedTrades.forEach((trade) => {
-      totalPnl += trade.pnl;
-      rollingBalance += trade.pnl;
+      const netPnl = getTradeNetPnl(trade);
+      const fees = getTradeTotalFees(trade);
+      totalPnl += netPnl;
+      totalGrossPnl += trade.pnl;
+      totalFees += fees;
+      rollingBalance += netPnl;
 
       if (rollingBalance > peak) {
         peak = rollingBalance;
@@ -160,12 +169,12 @@ export default function Dashboard({
         maxDdUSD = currentDd;
       }
 
-      if (trade.status === 'WIN') {
+      if (netPnl > 0) {
         winCount++;
-        totalWinsPnl += trade.pnl;
-      } else if (trade.status === 'LOSS') {
+        totalWinsPnl += netPnl;
+      } else if (netPnl < 0) {
         lossCount++;
-        totalLossesPnl += Math.abs(trade.pnl);
+        totalLossesPnl += Math.abs(netPnl);
       }
 
       if (trade.entryPrice && trade.sl && trade.tp) {
@@ -190,6 +199,8 @@ export default function Dashboard({
       riskRewardRatio,
       maxDrawdown: maxDrawdownPct,
       totalPnl,
+      totalFees,
+      grossPnl: totalGrossPnl,
       avgWin: winCount > 0 ? totalWinsPnl / winCount : 0,
       avgLoss: lossCount > 0 ? totalLossesPnl / lossCount : 0,
       winCount,
@@ -243,9 +254,10 @@ export default function Dashboard({
           label="Total Net Profit"
           value={formatValue(metrics.totalPnl, { showSign: true })}
           note={
-            <>
-              Initial capital <span className="font-black text-clay-foreground">{formatValue(initialCapital, { decimals: 0 })}</span>
-            </>
+            <div className="space-y-0.5">
+              <div>Initial: <span className="font-black text-clay-foreground">{formatValue(initialCapital, { decimals: 0 })}</span></div>
+              <div className="text-[10px] text-amber-600 font-bold">Fees Deducted: -{formatValue(metrics.totalFees || 0)} ($7/lot)</div>
+            </div>
           }
           icon={metrics.totalPnl >= 0 ? TrendingUp : TrendingDown}
           gradient={metrics.totalPnl >= 0 ? 'from-emerald-300 to-emerald-500' : 'from-pink-400 to-[#DB2777]'}
@@ -265,15 +277,15 @@ export default function Dashboard({
         <MetricCard
           label="Profit Factor"
           value={metrics.profitFactor === 99.9 ? 'INF' : metrics.profitFactor.toFixed(2)}
-          note="Gross gains divided by gross losses."
+          note="Net gains divided by net losses."
           icon={Award}
           gradient="from-violet-300 to-[#7C3AED]"
         />
         <MetricCard
-          label="Avg Planned R:R"
-          value={`1:${metrics.riskRewardRatio.toFixed(2)}`}
-          note="Average target size against stop size."
-          icon={Layers}
+          label="Commissions & Fees"
+          value={formatValue(metrics.totalFees || 0)}
+          note="Charged at $7/lot on FX & Gold."
+          icon={Coins}
           gradient="from-amber-300 to-[#F59E0B]"
         />
         <MetricCard

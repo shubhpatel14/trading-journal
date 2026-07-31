@@ -101,6 +101,8 @@ for position_id, position_deals in positions.items():
 
     net_profit = sum(d.profit for d in closes)
     commission = sum(d.commission for d in position_deals)
+    if abs(commission) < 0.001:
+        commission = total_volume * 7.0
     swap = sum(d.swap for d in position_deals)
     fee = sum(getattr(d, "fee", 0) for d in position_deals)
 

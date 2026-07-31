@@ -28,9 +28,10 @@ import {
   Sliders,
   RotateCcw,
   Award,
-  Check
+  Check,
+  Coins
 } from 'lucide-react';
-import { Trade, TradingAccount, JournalRule } from '../types';
+import { Trade, TradingAccount, JournalRule, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 interface JournalViewProps {
   trades: Trade[];
@@ -164,6 +165,9 @@ export default function JournalView({
   const [sl, setSl] = useState('');
   const [tp, setTp] = useState('');
   const [pnl, setPnl] = useState('');
+  const [commission, setCommission] = useState('7.00'); // $7/lot default
+  const [swap, setSwap] = useState('0.00');
+  const [fee, setFee] = useState('0.00');
   const [status, setStatus] = useState<'WIN' | 'LOSS' | 'BREAKEVEN' | 'OPEN'>('WIN');
   const [session, setSession] = useState<'LONDON' | 'NEW YORK' | 'ASIA'>('NEW YORK');
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
@@ -247,6 +251,25 @@ export default function JournalView({
     }
   }, [prefillTrade]);
 
+  const currentFormAccount = accounts.find(a => a.id === accountId);
+  const accountFeeRate = currentFormAccount?.commissionPerLot !== undefined ? currentFormAccount.commissionPerLot : 7;
+
+  const handleAccountChange = (newAccId: string) => {
+    setAccountId(newAccId);
+    const targetAcc = accounts.find(a => a.id === newAccId);
+    const rate = targetAcc?.commissionPerLot !== undefined ? targetAcc.commissionPerLot : 7;
+    const qty = parseFloat(size) || 1;
+    setCommission((qty * rate).toFixed(2));
+  };
+
+  const handleSizeChange = (val: string) => {
+    setSize(val);
+    const qty = parseFloat(val);
+    if (!isNaN(qty) && qty > 0) {
+      setCommission((qty * accountFeeRate).toFixed(2));
+    }
+  };
+
   // Set default date/time on fresh form open
   const handleOpenForm = () => {
     setDate(getLocalDateStr());
@@ -254,10 +277,17 @@ export default function JournalView({
     setEditingId(null);
     onClearPrefill();
     
+    const targetAccId = selectedAccountId !== 'ALL' ? selectedAccountId : (accounts[0]?.id || 'acc-1');
+    const targetAcc = accounts.find(a => a.id === targetAccId);
+    const rate = targetAcc?.commissionPerLot !== undefined ? targetAcc.commissionPerLot : 7;
+
     // Clear other states
     setEntryPrice('');
     setExitPrice('');
     setSize('1.0');
+    setCommission(rate.toFixed(2));
+    setSwap('0.00');
+    setFee('0.00');
     setSl('');
     setTp('');
     setPnl('');
@@ -293,6 +323,10 @@ export default function JournalView({
     setEntryPrice(trade.entryPrice.toString());
     setExitPrice(trade.exitPrice.toString());
     setSize(trade.size.toString());
+    const sizeNum = trade.size || 1;
+    setCommission((trade.commission !== undefined ? Math.abs(trade.commission) : sizeNum * 7).toFixed(2));
+    setSwap((Math.abs(trade.swap || 0)).toFixed(2));
+    setFee((Math.abs(trade.fee || 0)).toFixed(2));
     setSl(trade.sl ? trade.sl.toString() : '');
     setTp(trade.tp ? trade.tp.toString() : '');
     setPnl(trade.pnl.toString());
@@ -412,6 +446,10 @@ export default function JournalView({
     const isEvaluated = Object.keys(formChecklist).length > 0;
 
     const existingTrade = editingId ? trades.find(t => t.id === editingId) : null;
+    const parsedSize = parseFloat(size) || 1;
+    const parsedCommission = commission !== '' ? parseFloat(commission) : (parsedSize * 7);
+    const parsedSwap = parseFloat(swap) || 0;
+    const parsedFee = parseFloat(fee) || 0;
 
     const finalTrade = {
       accountId,
@@ -422,10 +460,13 @@ export default function JournalView({
       direction,
       entryPrice: parseFloat(entryPrice) || 0,
       exitPrice: parseFloat(exitPrice) || 0,
-      size: parseFloat(size) || 1,
+      size: parsedSize,
       sl: parseFloat(sl) || 0,
       tp: parseFloat(tp) || 0,
       pnl: parseFloat(pnl) || 0,
+      commission: parsedCommission,
+      swap: parsedSwap,
+      fee: parsedFee,
       status,
       session,
       mistakes: selectedMistakes,
@@ -694,7 +735,7 @@ export default function JournalView({
               <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">Trading Account</label>
               <select
                 value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
+                onChange={(e) => handleAccountChange(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-700"
                 required
               >
@@ -797,7 +838,7 @@ export default function JournalView({
                 step="0.01"
                 min="0.01"
                 value={size}
-                onChange={(e) => setSize(e.target.value)}
+                onChange={(e) => handleSizeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium text-slate-800 font-mono"
                 required
               />
@@ -861,6 +902,106 @@ export default function JournalView({
                 placeholder="2400.00"
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium text-slate-800 font-mono"
               />
+            </div>
+          </div>
+
+          {/* Trading Commissions & Fee Structure Box */}
+          <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200/70 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Coins size={16} className="text-amber-600" />
+                <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                  Trading Commissions & Fees (${accountFeeRate.toFixed(2)} per Standard Lot)
+                </span>
+              </div>
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
+                Account Rate: ${accountFeeRate.toFixed(2)}/lot
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-amber-800 uppercase mb-1">
+                  Commission (${accountFeeRate.toFixed(2)}/lot)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-xs text-amber-500 font-mono">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={commission}
+                    onChange={(e) => setCommission(e.target.value)}
+                    placeholder="7.00"
+                    className="w-full pl-6 pr-2.5 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <span className="text-[10px] text-amber-600 mt-0.5 block font-medium">
+                  Auto: {parseFloat(size) || 1} lot × ${accountFeeRate.toFixed(2)} = ${((parseFloat(size) || 1) * accountFeeRate).toFixed(2)}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-amber-800 uppercase mb-1">
+                  Swap Fee ($)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-xs text-amber-500 font-mono">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={swap}
+                    onChange={(e) => setSwap(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-6 pr-2.5 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <span className="text-[10px] text-amber-600 mt-0.5 block font-medium">Overnight financing</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-amber-800 uppercase mb-1">
+                  Spread / Other Fees ($)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-xs text-amber-500 font-mono">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={fee}
+                    onChange={(e) => setFee(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full pl-6 pr-2.5 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <span className="text-[10px] text-amber-600 mt-0.5 block font-medium">Spread / broker fee</span>
+              </div>
+            </div>
+
+            {/* Live calculation breakdown box */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-lg border border-amber-200/80 text-xs font-mono">
+              <div className="flex items-center gap-4">
+                <div>
+                  <span className="text-slate-400 text-[10px] block uppercase">Gross Price PnL</span>
+                  <span className="font-bold text-slate-800">${(parseFloat(pnl) || 0).toFixed(2)}</span>
+                </div>
+                <div className="text-amber-500 font-bold">-</div>
+                <div>
+                  <span className="text-amber-600 text-[10px] block uppercase">Total Fees</span>
+                  <span className="font-bold text-amber-700">
+                    -${((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0)).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right border-l pl-4 border-amber-200">
+                <span className="text-emerald-600 text-[10px] block uppercase font-bold">Net Realized PnL (Equity Impact)</span>
+                <span className={`font-black text-sm ${
+                  ((parseFloat(pnl) || 0) - ((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0))) >= 0
+                    ? 'text-emerald-600'
+                    : 'text-rose-600'
+                }`}>
+                  ${(((parseFloat(pnl) || 0) - ((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0)))).toFixed(2)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -928,7 +1069,7 @@ export default function JournalView({
 
             <div>
               <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Realized Net Profit/Loss ($)
+                Gross Trade P&L ($)
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono">$</span>
@@ -1383,17 +1524,28 @@ export default function JournalView({
                         <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{trade.exitPrice.toLocaleString()}</td>
                         <td className="py-3.5 px-4 font-mono text-slate-500">{trade.size}</td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1">
-                            {trade.pnl >= 0 ? (
-                              <TrendingUp size={12} className="text-emerald-500" />
-                            ) : (
-                              <TrendingDown size={12} className="text-rose-500" />
-                            )}
-                            <span className={`font-mono font-bold ${trade.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                            </span>
-                          </div>
+                        <td className="py-3.5 px-4 font-mono">
+                          {(() => {
+                            const netPnl = getTradeNetPnl(trade);
+                            const fees = getTradeTotalFees(trade);
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1">
+                                  {netPnl >= 0 ? (
+                                    <TrendingUp size={12} className="text-emerald-500" />
+                                  ) : (
+                                    <TrendingDown size={12} className="text-rose-500" />
+                                  )}
+                                  <span className={`font-bold ${netPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {netPnl >= 0 ? '+' : ''}${netPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-amber-700 font-medium">
+                                  Fees: -${fees.toFixed(2)}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Journaling Column */}
@@ -1475,6 +1627,28 @@ export default function JournalView({
                         <tr className="bg-slate-50/20">
                           <td colSpan={10} className="p-5 border-b border-slate-100">
                             <div className="space-y-4 animate-fadeIn">
+
+                              {/* Fee & Commission breakdown in expanded view */}
+                              <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                                <div>
+                                  <span className="text-slate-500 text-[10px] uppercase block font-sans font-bold">Gross Price PnL</span>
+                                  <span className="font-bold text-slate-800">${trade.pnl.toFixed(2)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-amber-700 text-[10px] uppercase block font-sans font-bold">Commission ($7/lot)</span>
+                                  <span className="font-bold text-amber-800">-${(trade.commission !== undefined ? Math.abs(trade.commission) : trade.size * 7).toFixed(2)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-amber-700 text-[10px] uppercase block font-sans font-bold">Swap / Spread Fees</span>
+                                  <span className="font-bold text-amber-800">-${(Math.abs(trade.swap || 0) + Math.abs(trade.fee || 0)).toFixed(2)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-emerald-700 text-[10px] uppercase block font-sans font-bold">Net PnL (Equity Impact)</span>
+                                  <span className={`font-black ${getTradeNetPnl(trade) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    ${getTradeNetPnl(trade).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
                               
                               {/* Notes */}
                               <div className="space-y-1.5">

@@ -36,7 +36,7 @@ import {
   CheckCircle2,
   RefreshCw
 } from 'lucide-react';
-import { Trade, TradingAccount } from '../types';
+import { Trade, TradingAccount, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 interface InsightsViewProps {
   trades: Trade[];
@@ -803,6 +803,8 @@ export default function InsightsView({
     }
 
     let totalPnl = 0;
+    let totalGrossPricePnl = 0;
+    let totalFees = 0;
     let winCount = 0;
     let lossCount = 0;
     let beCount = 0;
@@ -821,8 +823,12 @@ export default function InsightsView({
     const assetPnL: Record<string, { pnl: number; wins: number; total: number }> = {};
 
     sortedTrades.forEach(t => {
-      totalPnl += t.pnl;
-      rollingBalance += t.pnl;
+      const netPnl = getTradeNetPnl(t);
+      const fee = getTradeTotalFees(t);
+      totalPnl += netPnl;
+      totalGrossPricePnl += t.pnl;
+      totalFees += fee;
+      rollingBalance += netPnl;
 
       if (rollingBalance > peakBalance) {
         peakBalance = rollingBalance;
@@ -832,15 +838,15 @@ export default function InsightsView({
         maxDdUSD = dd;
       }
 
-      const isBe = t.status === 'BREAKEVEN' || (t.pnl > -10 && t.pnl < 10);
+      const isBe = t.status === 'BREAKEVEN' || (netPnl > -10 && netPnl < 10);
       if (isBe) {
         beCount++;
-      } else if (t.status === 'WIN' || t.pnl >= 10) {
+      } else if (netPnl > 0) {
         winCount++;
-        grossProfit += t.pnl;
+        grossProfit += netPnl;
       } else {
         lossCount++;
-        grossLoss += Math.abs(t.pnl);
+        grossLoss += Math.abs(netPnl);
       }
 
       if (t.mistakes && t.mistakes.some(m => m !== 'None')) {
@@ -859,16 +865,16 @@ export default function InsightsView({
       // Session map
       const sess = t.session || 'NEW YORK';
       if (!sessionPnL[sess]) sessionPnL[sess] = { pnl: 0, wins: 0, total: 0 };
-      sessionPnL[sess].pnl += t.pnl;
+      sessionPnL[sess].pnl += netPnl;
       sessionPnL[sess].total += 1;
-      if (t.pnl > 0) sessionPnL[sess].wins += 1;
+      if (netPnl > 0) sessionPnL[sess].wins += 1;
 
       // Asset map
-      const asset = t.asset || 'XAUUSD';
-      if (!assetPnL[asset]) assetPnL[asset] = { pnl: 0, wins: 0, total: 0 };
-      assetPnL[asset].pnl += t.pnl;
-      assetPnL[asset].total += 1;
-      if (t.pnl > 0) assetPnL[asset].wins += 1;
+      const ass = t.asset || 'XAUUSD';
+      if (!assetPnL[ass]) assetPnL[ass] = { pnl: 0, wins: 0, total: 0 };
+      assetPnL[ass].pnl += netPnl;
+      assetPnL[ass].total += 1;
+      if (netPnl > 0) assetPnL[ass].wins += 1;
     });
 
     const winRate = (winCount / totalTrades) * 100;

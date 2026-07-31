@@ -9,7 +9,7 @@ import {
   FileText,
   Wallet
 } from 'lucide-react';
-import { Trade } from '../types';
+import { Trade, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 interface PnLCalendarProps {
   trades: Trade[];
@@ -127,27 +127,38 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
     return trades.filter(t => t.date === dateStr);
   };
 
-  // Calculate total PNL for a day
+  // Calculate total Net PNL for a day (including $7/lot commissions)
   const getDailyPnl = (dateStr: string) => {
     const dayTrades = getTradesForDay(dateStr);
-    return dayTrades.reduce((sum, t) => sum + t.pnl, 0);
+    return dayTrades.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
   };
 
-  // Calculate total equity on a specific date (initialBalance + cumulative PnL of all trades up to and including dateStr)
+  // Calculate total equity on a specific date (initialBalance + cumulative Net PnL of all trades up to and including dateStr)
   const getEquityForDate = (dateStr: string) => {
     const cumulativePnl = trades
       .filter(t => t.date <= dateStr)
-      .reduce((sum, t) => sum + t.pnl, 0);
+      .reduce((sum, t) => sum + getTradeNetPnl(t), 0);
     return initialBalance + cumulativePnl;
   };
 
-  // Calculate total monthly PNL for the viewed month (only including current month days)
+  // Calculate total monthly Net PNL for the viewed month
   const monthlyTotalPnl = React.useMemo(() => {
     let total = 0;
     trades.forEach(t => {
       const tDate = parseDateStr(t.date);
       if (tDate.getFullYear() === year && tDate.getMonth() === month) {
-        total += t.pnl;
+        total += getTradeNetPnl(t);
+      }
+    });
+    return total;
+  }, [trades, year, month]);
+
+  const monthlyTotalFees = React.useMemo(() => {
+    let total = 0;
+    trades.forEach(t => {
+      const tDate = parseDateStr(t.date);
+      if (tDate.getFullYear() === year && tDate.getMonth() === month) {
+        total += getTradeTotalFees(t);
       }
     });
     return total;

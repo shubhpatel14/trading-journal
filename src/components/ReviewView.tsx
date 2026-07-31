@@ -24,7 +24,7 @@ import {
   CheckSquare,
   Layers
 } from 'lucide-react';
-import { Trade, DailyReview, WeeklyReview } from '../types';
+import { Trade, DailyReview, WeeklyReview, getTradeNetPnl } from '../types';
 
 interface ReviewViewProps {
   trades: Trade[];
@@ -116,11 +116,11 @@ export default function ReviewView({
   }, [trades, selectedDate]);
 
   const dayPnl = useMemo(() => {
-    return dayTrades.reduce((sum, t) => sum + t.pnl, 0);
+    return dayTrades.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
   }, [dayTrades]);
 
-  const dayWins = useMemo(() => dayTrades.filter(t => t.pnl > 0).length, [dayTrades]);
-  const dayLosses = useMemo(() => dayTrades.filter(t => t.pnl < 0).length, [dayTrades]);
+  const dayWins = useMemo(() => dayTrades.filter(t => getTradeNetPnl(t) > 0).length, [dayTrades]);
+  const dayLosses = useMemo(() => dayTrades.filter(t => getTradeNetPnl(t) < 0).length, [dayTrades]);
 
   // Existing review for selected date
   const existingDailyReview = useMemo(() => {
@@ -133,7 +133,7 @@ export default function ReviewView({
   }, [trades, selectedWeekStart, selectedWeekEnd]);
 
   const weekPnl = useMemo(() => {
-    return weekTrades.reduce((sum, t) => sum + t.pnl, 0);
+    return weekTrades.reduce((sum, t) => sum + getTradeNetPnl(t), 0);
   }, [weekTrades]);
 
   const weekWinRate = useMemo(() => {

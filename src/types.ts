@@ -4,6 +4,7 @@ export interface TradingAccount {
   broker: string;
   initialBalance: number;
   currency: string;
+  commissionPerLot?: number; // Fee structure per lot ($/lot, e.g. 7.00)
   isActive?: boolean;
 }
 
@@ -48,7 +49,10 @@ export interface Trade {
   size: number; // Contracts/Lots
   sl: number; // Stop Loss
   tp: number; // Take Profit
-  pnl: number; // Profit and Loss in USD
+  pnl: number; // Gross Profit and Loss in USD
+  commission?: number; // USD trading commission
+  swap?: number; // USD overnight financing fee
+  fee?: number; // USD spread/additional fees
   status: 'WIN' | 'LOSS' | 'BREAKEVEN' | 'OPEN';
   session: 'LONDON' | 'NEW YORK' | 'ASIA';
   mistakes: string[]; // e.g., "FOMO", "Overtrading", "Left Early", "None"
@@ -61,6 +65,26 @@ export interface Trade {
   journalingStatus?: 'COMPLETE' | 'PENDING'; // Status showing if trade journaling/checklist is complete
 }
 
+export function getTradeCommission(size: number, commissionOverride?: number, accountRate: number = 7): number {
+  if (commissionOverride !== undefined && !isNaN(commissionOverride)) {
+    return Math.abs(commissionOverride);
+  }
+  return Math.round((size || 0) * accountRate * 100) / 100;
+}
+
+export function getTradeTotalFees(trade: Partial<Trade>, defaultRate: number = 7): number {
+  const size = trade.size || 0;
+  const comm = trade.commission !== undefined ? Math.abs(trade.commission) : size * defaultRate;
+  const swap = Math.abs(trade.swap || 0);
+  const fee = Math.abs(trade.fee || 0);
+  return Math.round((comm + swap + fee) * 100) / 100;
+}
+
+export function getTradeNetPnl(trade: Trade, defaultRate: number = 7): number {
+  const fees = getTradeTotalFees(trade, defaultRate);
+  return Math.round(((trade.pnl || 0) - fees) * 100) / 100;
+}
+
 export interface PerformanceMetrics {
   totalTrades: number;
   winRate: number;
@@ -68,6 +92,8 @@ export interface PerformanceMetrics {
   riskRewardRatio: number;
   maxDrawdown: number;
   totalPnl: number;
+  totalFees?: number;
+  grossPnl?: number;
   avgWin: number;
   avgLoss: number;
   winCount: number;
@@ -99,4 +125,5 @@ export interface WeeklyReview {
   weeklyScreenshot?: string;
   createdAt: string;
 }
+
 

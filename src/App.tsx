@@ -22,9 +22,10 @@ import {
   Sparkles,
   ShieldAlert,
   Loader2,
-  ClipboardCheck
+  ClipboardCheck,
+  Coins
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule } from './types';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES } from './mockData';
 
 // Import Firebase config & helpers
@@ -148,6 +149,7 @@ export default function App() {
   const [newAccBroker, setNewAccBroker] = useState('');
   const [newAccBalance, setNewAccBalance] = useState('100000');
   const [newAccCurrency, setNewAccCurrency] = useState('USD');
+  const [newAccCommission, setNewAccCommission] = useState('7.00');
 
   // Trades State with LocalStorage
   const [trades, setTrades] = useState<Trade[]>(() => {
@@ -755,7 +757,8 @@ export default function App() {
       name: newAccName,
       broker: newAccBroker || 'Unknown Broker',
       initialBalance: parseFloat(newAccBalance) || 0,
-      currency: newAccCurrency || 'USD'
+      currency: newAccCurrency || 'USD',
+      commissionPerLot: parseFloat(newAccCommission) || 7
     };
 
     setAccounts(prev => [...prev, newAcc]);
@@ -766,6 +769,7 @@ export default function App() {
     setNewAccBroker('');
     setNewAccBalance('100000');
     setNewAccCurrency('USD');
+    setNewAccCommission('7.00');
 
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
@@ -777,6 +781,19 @@ export default function App() {
         setIsCloudSyncing(false);
       }
     }
+  };
+
+  const handleUpdateAccountCommission = async (accId: string, commissionPerLot: number) => {
+    setAccounts(prev => {
+      const updated = prev.map(a => a.id === accId ? { ...a, commissionPerLot } : a);
+      const updatedAcc = updated.find(a => a.id === accId);
+      if (user && db && !isDemoUser && updatedAcc) {
+        setDoc(doc(db, 'users', user.uid, 'accounts', accId), updatedAcc, { merge: true }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/accounts/${accId}`);
+        });
+      }
+      return updated;
+    });
   };
 
   const handleDeleteAccount = async (accId: string) => {
@@ -983,51 +1000,74 @@ export default function App() {
 
             {/* List of existing accounts */}
             <div className="space-y-2">
-              <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider">Active Portfolio Accounts</span>
-              <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1">
+              <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Portfolio Accounts & Fee Structure</span>
+              <div className="max-h-[210px] overflow-y-auto space-y-2 pr-1">
                 {accounts.map(acc => {
                   const accTrades = trades.filter(t => t.accountId === acc.id);
-                  const accNetPnl = accTrades.reduce((sum, t) => sum + t.pnl, 0);
+                  const accNetPnl = accTrades.reduce((sum, t) => sum + getTradeNetPnl(t, acc.commissionPerLot ?? 7), 0);
                   const isSelected = selectedAccountId === acc.id;
 
                   return (
                     <div
                       key={acc.id}
-                      className={`p-3 rounded-xl border flex justify-between items-center text-xs transition ${isSelected
+                      className={`p-3 rounded-xl border space-y-2 transition ${isSelected
                         ? 'bg-blue-50/40 border-blue-200'
                         : 'bg-slate-50/50 border-slate-150'
                         }`}
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <strong className="text-slate-800">{acc.name}</strong>
-                          <span className="text-4xs bg-slate-200/80 px-1 py-0.5 rounded text-slate-500 font-bold uppercase">{acc.broker}</span>
+                      <div className="flex justify-between items-center">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <strong className="text-slate-800 text-xs">{acc.name}</strong>
+                            <span className="text-4xs bg-slate-200/80 px-1 py-0.5 rounded text-slate-500 font-bold uppercase">{acc.broker}</span>
+                          </div>
+                          <div className="text-3xs text-slate-500 font-mono">
+                            Start: ${acc.initialBalance.toLocaleString()} ({acc.currency}) • Net P&L:{' '}
+                            <span className={accNetPnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                              {accNetPnl >= 0 ? '+' : ''}${accNetPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-3xs text-slate-500 font-mono">
-                          Start Balance: ${acc.initialBalance.toLocaleString()} • Current P&L:{' '}
-                          <span className={accNetPnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
-                            {accNetPnl >= 0 ? '+' : ''}${accNetPnl.toLocaleString()}
-                          </span>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedAccountId(acc.id)}
+                            className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-md transition cursor-pointer ${isSelected
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
+                              }`}
+                          >
+                            {isSelected ? 'Active' : 'Select'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAccount(acc.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                            title="Delete Account and linked trades"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setSelectedAccountId(acc.id)}
-                          className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-md transition ${isSelected
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
-                            }`}
-                        >
-                          {isSelected ? 'Active' : 'Select'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteAccount(acc.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                          title="Delete Account and linked trades"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                      {/* Fee Structure Per Lot Setting */}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 text-2xs">
+                        <span className="text-slate-500 font-semibold flex items-center gap-1">
+                          <Coins size={12} className="text-amber-600" />
+                          Fee Structure per Lot:
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-400 font-mono text-xs">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={acc.commissionPerLot !== undefined ? acc.commissionPerLot : 7}
+                            onChange={(e) => handleUpdateAccountCommission(acc.id, parseFloat(e.target.value) || 0)}
+                            className="w-16 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            title="Edit trading commission charged per standard lot ($/lot)"
+                          />
+                          <span className="text-3xs text-slate-400 font-mono">/ lot</span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1054,7 +1094,7 @@ export default function App() {
                   <label className="text-slate-500 font-bold">Broker / Provider</label>
                   <input
                     type="text"
-                    placeholder="e.g. Funding Pips, IC Markets"
+                    placeholder="e.g. Funding Pips, BlueBerry"
                     value={newAccBroker}
                     onChange={(e) => setNewAccBroker(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1084,11 +1124,29 @@ export default function App() {
                     <option value="USDT">USDT</option>
                   </select>
                 </div>
+                <div className="space-y-1 col-span-2">
+                  <label className="text-slate-500 font-bold flex items-center justify-between">
+                    <span>Commission Fee Structure</span>
+                    <span className="text-[10px] text-amber-700 font-mono">($ / standard lot)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1.5 text-xs text-slate-400 font-mono">$</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      required
+                      placeholder="7.00"
+                      value={newAccCommission}
+                      onChange={(e) => setNewAccCommission(e.target.value)}
+                      className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition"
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer"
               >
                 Create and Switch Account
               </button>

@@ -217,6 +217,8 @@ def run_sync():
         total_volume = sum(d.volume for d in (opens if opens else pos_deals))
         net_profit = sum(d.profit for d in closes)
         commission = sum(d.commission for d in pos_deals)
+        if abs(commission) < 0.001:
+            commission = total_volume * 7.0
         swap = sum(d.swap for d in pos_deals)
         fee = sum(getattr(d, "fee", 0) for d in pos_deals)
 
