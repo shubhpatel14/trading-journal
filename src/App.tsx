@@ -1513,7 +1513,7 @@ export default function App() {
 
       {/* Footer credits bar */}
       <footer className="clay-surface mx-auto mb-6 mt-12 w-[calc(100%-2rem)] max-w-7xl py-5 text-center text-3xs text-clay-muted font-mono">
-        <div>TRADEPLAN & EXECUTIVE TRADING JOURNAL • CLIENT-SIDE PERSISTENCE SECURED</div>
+        <div>TRADEFORGE & EXECUTIVE TRADING JOURNAL • CLIENT-SIDE PERSISTENCE SECURED</div>
         <div className="mt-1 flex justify-center items-center gap-1.5 text-clay-accent">
           <Database size={10} className="stroke-[3px]" />
           <span>Local Storage Cache Active • Live UTC Session Feed</span>
