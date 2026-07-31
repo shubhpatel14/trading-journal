@@ -79,7 +79,7 @@ Provide your feedback report directly. Use bold scannable headings, professional
           const isCloudServer = !!process.env.RENDER || process.env.NODE_ENV === 'production';
           return res.status(400).json({ 
             error: isCloudServer 
-              ? 'Your website is hosted on Render Cloud, which cannot reach your local PC MT5 application. Please run "python mt5-sync/auto_sync.py" on your Windows PC!'
+              ? 'Your website is hosted on Render Cloud, which cannot reach your local PC MT5 application. Please download the GitHub ZIP file from https://github.com/shubhpatel14/Journal, extract it, and run "python mt5-sync/auto_sync.py" or run the app locally on your Windows PC!'
               : 'Could not connect to MT5. Ensure MT5 Desktop Terminal is open and logged into your account.', 
             details: stdout || stderr || error?.message 
           });
