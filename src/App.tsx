@@ -46,7 +46,8 @@ import {
   collection,
   getDocs,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  cleanForFirestore
 } from './lib/firebase';
 
 // Import sub-components
@@ -262,7 +263,7 @@ export default function App() {
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
       try {
-        await setDoc(doc(db, 'users', user.uid, 'daily_reviews', rev.id), rev);
+        await setDoc(doc(db, 'users', user.uid, 'daily_reviews', rev.id), cleanForFirestore(rev));
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/daily_reviews/${rev.id}`);
       } finally {
@@ -297,7 +298,7 @@ export default function App() {
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
       try {
-        await setDoc(doc(db, 'users', user.uid, 'weekly_reviews', rev.id), rev);
+        await setDoc(doc(db, 'users', user.uid, 'weekly_reviews', rev.id), cleanForFirestore(rev));
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/weekly_reviews/${rev.id}`);
       } finally {
@@ -390,35 +391,68 @@ export default function App() {
         loadedWeeklyReviews.push({ id: docSnap.id, ...docSnap.data() } as WeeklyReview);
       });
 
-      // Seeding logic if empty
-      if (loadedAccounts.length === 0 && loadedTrades.length === 0 && loadedPlans.length === 0) {
-        console.log("Empty profile detected. Initializing database with current active lists...");
-        const batch = writeBatch(db);
+      // Normalize trades loaded from Firestore (default status to COMPLETE if notes/checklist or closed)
+      const normalizedLoadedTrades = loadedTrades.map(t => ({
+        ...t,
+        journalingStatus: t.journalingStatus || (t.notes || (t.checklist && Object.keys(t.checklist).length > 0) || t.status !== 'OPEN' ? 'COMPLETE' : 'PENDING')
+      }));
 
+      const batch = writeBatch(db);
+      let needsBatchCommit = false;
+
+      // Smart collection sync: if Firestore is empty for a collection, sync local items up to Firestore
+      if (loadedAccounts.length > 0) {
+        setAccounts(loadedAccounts);
+      } else if (accounts.length > 0) {
         accounts.forEach(acc => {
-          batch.set(doc(db, 'users', userId, 'accounts', acc.id), acc);
+          batch.set(doc(db, 'users', userId, 'accounts', acc.id), cleanForFirestore(acc));
         });
-        trades.forEach(t => {
-          batch.set(doc(db, 'users', userId, 'trades', t.id), t);
-        });
-        plans.forEach(p => {
-          batch.set(doc(db, 'users', userId, 'plans', p.id), p);
-        });
-        dailyReviews.forEach(r => {
-          batch.set(doc(db, 'users', userId, 'daily_reviews', r.id), r);
-        });
-        weeklyReviews.forEach(r => {
-          batch.set(doc(db, 'users', userId, 'weekly_reviews', r.id), r);
-        });
+        needsBatchCommit = true;
+      }
 
-        await batch.commit();
-      } else {
-        // Update local React state with loaded variables
-        if (loadedAccounts.length > 0) setAccounts(loadedAccounts);
-        setTrades(loadedTrades);
+      if (normalizedLoadedTrades.length > 0) {
+        setTrades(normalizedLoadedTrades);
+      } else if (trades.length > 0) {
+        const cleanedLocalTrades = trades.map(t => ({
+          ...t,
+          journalingStatus: t.journalingStatus || 'COMPLETE'
+        }));
+        setTrades(cleanedLocalTrades);
+        cleanedLocalTrades.forEach(t => {
+          batch.set(doc(db, 'users', userId, 'trades', t.id), cleanForFirestore(t));
+        });
+        needsBatchCommit = true;
+      }
+
+      if (loadedPlans.length > 0) {
         setPlans(loadedPlans);
+      } else if (plans.length > 0) {
+        plans.forEach(p => {
+          batch.set(doc(db, 'users', userId, 'plans', p.id), cleanForFirestore(p));
+        });
+        needsBatchCommit = true;
+      }
+
+      if (loadedDailyReviews.length > 0) {
         setDailyReviews(loadedDailyReviews);
+      } else if (dailyReviews.length > 0) {
+        dailyReviews.forEach(r => {
+          batch.set(doc(db, 'users', userId, 'daily_reviews', r.id), cleanForFirestore(r));
+        });
+        needsBatchCommit = true;
+      }
+
+      if (loadedWeeklyReviews.length > 0) {
         setWeeklyReviews(loadedWeeklyReviews);
+      } else if (weeklyReviews.length > 0) {
+        weeklyReviews.forEach(r => {
+          batch.set(doc(db, 'users', userId, 'weekly_reviews', r.id), cleanForFirestore(r));
+        });
+        needsBatchCommit = true;
+      }
+
+      if (needsBatchCommit) {
+        await batch.commit();
       }
     } catch (err: any) {
       console.error("Firebase cloud sync failed:", err);
@@ -595,14 +629,15 @@ export default function App() {
   const handleAddTrade = async (newTrade: Omit<Trade, 'id'>) => {
     const trade: Trade = {
       ...newTrade,
-      id: `trade-${Date.now()}`
+      id: `trade-${Date.now()}`,
+      journalingStatus: newTrade.journalingStatus || 'COMPLETE'
     };
     setTrades(prev => [trade, ...prev]);
 
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
       try {
-        await setDoc(doc(db, 'users', user.uid, 'trades', trade.id), trade);
+        await setDoc(doc(db, 'users', user.uid, 'trades', trade.id), cleanForFirestore(trade));
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/trades/${trade.id}`);
       } finally {
@@ -617,7 +652,7 @@ export default function App() {
       const updatedTrade = updated.find(t => t.id === id);
 
       if (user && db && !isDemoUser && updatedTrade) {
-        setDoc(doc(db, 'users', user.uid, 'trades', id), updatedTrade).catch(e => {
+        setDoc(doc(db, 'users', user.uid, 'trades', id), cleanForFirestore(updatedTrade)).catch(e => {
           handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/trades/${id}`);
         });
       }
@@ -654,7 +689,7 @@ export default function App() {
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
       try {
-        await setDoc(doc(db, 'users', user.uid, 'plans', plan.id), plan);
+        await setDoc(doc(db, 'users', user.uid, 'plans', plan.id), cleanForFirestore(plan));
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/plans/${plan.id}`);
       } finally {
@@ -669,7 +704,7 @@ export default function App() {
       const updatedPlan = updated.find(p => p.id === id);
 
       if (user && db && !isDemoUser && updatedPlan) {
-        setDoc(doc(db, 'users', user.uid, 'plans', id), updatedPlan).catch(e => {
+        setDoc(doc(db, 'users', user.uid, 'plans', id), cleanForFirestore(updatedPlan)).catch(e => {
           handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/plans/${id}`);
         });
       }
@@ -724,13 +759,13 @@ export default function App() {
 
           // Seed the reset data directly
           INITIAL_ACCOUNTS.forEach(acc => {
-            batch.set(doc(db, 'users', user.uid, 'accounts', acc.id), acc);
+            batch.set(doc(db, 'users', user.uid, 'accounts', acc.id), cleanForFirestore(acc));
           });
           INITIAL_TRADES.forEach(t => {
-            batch.set(doc(db, 'users', user.uid, 'trades', t.id), t);
+            batch.set(doc(db, 'users', user.uid, 'trades', t.id), cleanForFirestore(t));
           });
           INITIAL_TRADE_PLANS.forEach(p => {
-            batch.set(doc(db, 'users', user.uid, 'plans', p.id), p);
+            batch.set(doc(db, 'users', user.uid, 'plans', p.id), cleanForFirestore(p));
           });
 
           await batch.commit();

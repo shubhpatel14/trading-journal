@@ -17,6 +17,8 @@ import {
   Database,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Maximize2,
   Sparkles,
   RefreshCw,
@@ -173,6 +175,7 @@ export default function JournalView({
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
   const [notes, setNotes] = useState('');
   const [formChecklist, setFormChecklist] = useState<Record<string, boolean>>({});
+  const [formJournalingStatus, setFormJournalingStatus] = useState<'COMPLETE' | 'PENDING'>('COMPLETE');
 
   // Quick Journal / Score Modal state
   const [journalingTrade, setJournalingTrade] = useState<Trade | null>(null);
@@ -202,6 +205,14 @@ export default function JournalView({
   const [dayOfWeekFilter, setDayOfWeekFilter] = useState('ALL');
   const [dateFilter, setDateFilter] = useState<string>(initialDateFilter || '');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'HIGHEST_PROFIT' | 'HIGHEST_LOSS'>('NEWEST');
+
+  // Pagination State (5 days per page)
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset pagination page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, assetFilter, setupFilter, statusFilter, sessionFilter, dayOfWeekFilter, dateFilter, sortBy, tradeTypeTab, selectedAccountId]);
 
   const getTradeDayName = (dateStr: string) => {
     if (!dateStr) return '';
@@ -296,6 +307,7 @@ export default function JournalView({
     setLtfScreenshot('');
     setSelectedMistakes(['None']);
     setFormChecklist({});
+    setFormJournalingStatus('COMPLETE');
     if (selectedAccountId !== 'ALL') {
       setAccountId(selectedAccountId);
     } else if (accounts.length > 0) {
@@ -337,6 +349,7 @@ export default function JournalView({
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
     setFormChecklist(trade.checklist || {});
+    setFormJournalingStatus(trade.journalingStatus || 'COMPLETE');
     setShowForm(true);
   };
 
@@ -437,6 +450,15 @@ export default function JournalView({
     setEditingRuleId(null);
   };
 
+  // Quick toggle trade journaling completion status
+  const handleToggleTradeStatus = (trade: Trade) => {
+    const isCompleted = getIsTradeCompleted(trade);
+    const newStatus = isCompleted ? 'PENDING' : 'COMPLETE';
+    onEditTrade(trade.id, {
+      journalingStatus: newStatus
+    });
+  };
+
   // Handle submit (save or update)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -474,9 +496,9 @@ export default function JournalView({
       htfScreenshot: htfScreenshot.trim(),
       ltfScreenshot: ltfScreenshot.trim(),
       checklist: formChecklist,
-      checklistScore: isEvaluated ? checkedRulesCount : (existingTrade?.checklistScore ?? 0),
+      checklistScore: isEvaluated ? checkedRulesCount : (existingTrade?.checklistScore ?? checkedRulesCount),
       maxChecklistScore: isEvaluated ? maxScore : (existingTrade?.maxChecklistScore ?? maxScore),
-      journalingStatus: isEvaluated ? ('COMPLETE' as const) : (existingTrade?.journalingStatus ?? ('PENDING' as const))
+      journalingStatus: formJournalingStatus
     };
 
     if (editingId) {
@@ -553,8 +575,13 @@ export default function JournalView({
     reader.readAsText(file);
   };
 
-  const completedCount = trades.filter(t => t.journalingStatus === 'COMPLETE').length;
-  const pendingCount = trades.filter(t => t.journalingStatus !== 'COMPLETE').length;
+  const getIsTradeCompleted = (t: Trade) => {
+    if (t.journalingStatus) return t.journalingStatus === 'COMPLETE';
+    return Boolean(t.notes || (t.checklist && Object.keys(t.checklist).length > 0) || t.status !== 'OPEN');
+  };
+
+  const completedCount = trades.filter(getIsTradeCompleted).length;
+  const pendingCount = trades.filter(t => !getIsTradeCompleted(t)).length;
 
   // Filter Trades
   const filteredTrades = trades.filter(t => {
@@ -571,8 +598,8 @@ export default function JournalView({
     const matchTypeTab = tradeTypeTab === 'ALL' 
       ? true 
       : tradeTypeTab === 'PENDING' 
-        ? t.journalingStatus !== 'COMPLETE' 
-        : t.journalingStatus === 'COMPLETE';
+        ? !getIsTradeCompleted(t) 
+        : getIsTradeCompleted(t);
 
     return matchSearch && matchAsset && matchSetup && matchStatus && matchSession && matchDate && matchDayOfWeek && matchTypeTab;
   });
@@ -603,6 +630,25 @@ export default function JournalView({
     }
     return 0;
   });
+
+  // 5-Day Pagination Logic
+  const DAYS_PER_PAGE = 5;
+  const uniqueDatesInSorted = Array.from(new Set(sortedTrades.map(t => t.date)));
+  const totalPages = Math.max(1, Math.ceil(uniqueDatesInSorted.length / DAYS_PER_PAGE));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const startIndex = (safePage - 1) * DAYS_PER_PAGE;
+  const visibleDatesSet = new Set(uniqueDatesInSorted.slice(startIndex, startIndex + DAYS_PER_PAGE));
+  const paginatedTrades = sortedTrades.filter(t => visibleDatesSet.has(t.date));
+
+  const handlePageChange = (newPage: number) => {
+    const p = Math.min(Math.max(1, newPage), totalPages);
+    setCurrentPage(p);
+    const element = document.getElementById('journal-tab');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   // Unique elements for filter dropdowns
   const uniqueAssets = Array.from(new Set(trades.map(t => t.asset)));
@@ -1080,7 +1126,7 @@ export default function JournalView({
             </div>
           </div>
 
-          {/* Row 4 - Trade Status, PNL & Rules Check */}
+          {/* Row 4 - Trade Status, Journaling Status, PNL & Rules Check */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             <div>
               <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -1095,6 +1141,20 @@ export default function JournalView({
                 <option value="LOSS">LOSS (Completed)</option>
                 <option value="BREAKEVEN">BREAKEVEN (Completed)</option>
                 <option value="OPEN">PENDING / OPEN (Active Trade)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Journal Completion Status
+              </label>
+              <select
+                value={formJournalingStatus}
+                onChange={(e) => setFormJournalingStatus(e.target.value as any)}
+                className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold text-slate-800 cursor-pointer"
+              >
+                <option value="COMPLETE">Journaling Complete</option>
+                <option value="PENDING">Pending Draft</option>
               </select>
             </div>
 
@@ -1314,8 +1374,8 @@ export default function JournalView({
           </div>
 
           <div className="text-3xs font-extrabold text-blue-700 bg-blue-50 px-3 py-1 rounded-lg border border-blue-200/60 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles size={12} />
-            <span>Trades Partitioned By Day</span>
+            <CalendarDays size={12} />
+            <span>5 Days Per Page • Page {safePage}/{totalPages} ({uniqueDatesInSorted.length} Total Days)</span>
           </div>
         </div>
 
@@ -1485,10 +1545,10 @@ export default function JournalView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs">
-                {sortedTrades.map((trade, index) => {
+                {paginatedTrades.map((trade, index) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
                   const isExpanded = expandedTradeId === trade.id;
-                  const showDateDivider = index === 0 || sortedTrades[index - 1].date !== trade.date;
+                  const showDateDivider = index === 0 || paginatedTrades[index - 1].date !== trade.date;
 
                   return (
                     <React.Fragment key={trade.id}>
@@ -1581,13 +1641,17 @@ export default function JournalView({
 
                         {/* Journaling Column */}
                         <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                          {trade.journalingStatus === 'COMPLETE' ? (
+                          {getIsTradeCompleted(trade) ? (
                             <div className="space-y-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-3xs">
+                                <button
+                                  onClick={() => handleToggleTradeStatus(trade)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/80 shadow-3xs cursor-pointer transition"
+                                  title="Click to toggle status to Pending"
+                                >
                                   <CheckCircle2 size={11} />
                                   Journaling Complete
-                                </span>
+                                </button>
                                 {trade.checklistScore !== undefined && trade.maxChecklistScore !== undefined && (
                                   <span className="text-3xs font-bold font-mono px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/80">
                                     {trade.checklistScore}/{trade.maxChecklistScore} ({trade.maxChecklistScore > 0 ? Math.round((trade.checklistScore / trade.maxChecklistScore) * 100) : 0}%)
@@ -1603,10 +1667,14 @@ export default function JournalView({
                           ) : (
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/80 shadow-3xs">
+                                <button
+                                  onClick={() => handleToggleTradeStatus(trade)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-3xs font-extrabold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/80 shadow-3xs cursor-pointer transition"
+                                  title="Click to toggle status to Complete"
+                                >
                                   <Clock size={11} className="animate-pulse" />
                                   Pending
-                                </span>
+                                </button>
                                 <button
                                   onClick={() => handleOpenJournalModal(trade)}
                                   className="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 text-white text-4xs font-bold rounded shadow-3xs transition cursor-pointer flex items-center gap-1"
@@ -1786,6 +1854,68 @@ export default function JournalView({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* 5-Day Pagination Footer Bar */}
+        {sortedTrades.length > 0 && uniqueDatesInSorted.length > 0 && (
+          <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-2xs text-slate-500 font-sans flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-800 font-mono bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg shadow-3xs">
+                Page {safePage} of {totalPages}
+              </span>
+              <span className="text-slate-300">•</span>
+              <span>
+                Showing <strong className="text-blue-700">{visibleDatesSet.size}</strong> {visibleDatesSet.size === 1 ? 'trading day' : 'trading days'} ({paginatedTrades.length} trades) out of <strong className="text-slate-700">{uniqueDatesInSorted.length}</strong> total days
+              </span>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => handlePageChange(safePage - 1)}
+                  disabled={safePage === 1}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:hover:bg-white text-2xs font-extrabold rounded-xl transition shadow-3xs cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
+                >
+                  <ChevronLeft size={13} />
+                  <span>Prev 5 Days</span>
+                </button>
+
+                <div className="flex items-center gap-1 px-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(pNum => {
+                    const isCurrent = pNum === safePage;
+                    if (totalPages > 7 && Math.abs(pNum - safePage) > 2 && pNum !== 1 && pNum !== totalPages) {
+                      if (pNum === safePage - 3 || pNum === safePage + 3) {
+                        return <span key={`ellipsis-${pNum}`} className="text-3xs text-slate-400 font-mono px-0.5">..</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={`page-${pNum}`}
+                        onClick={() => handlePageChange(pNum)}
+                        className={`w-7 h-7 text-2xs font-extrabold rounded-lg transition cursor-pointer font-mono ${
+                          isCurrent
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => handlePageChange(safePage + 1)}
+                  disabled={safePage === totalPages}
+                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:hover:bg-white text-2xs font-extrabold rounded-xl transition shadow-3xs cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
+                >
+                  <span>Next 5 Days</span>
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
