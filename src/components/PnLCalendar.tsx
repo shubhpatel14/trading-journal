@@ -6,13 +6,15 @@ import {
   TrendingDown, 
   CalendarDays,
   Calendar,
-  FileText
+  FileText,
+  Wallet
 } from 'lucide-react';
 import { Trade } from '../types';
 
 interface PnLCalendarProps {
   trades: Trade[];
   onSelectDate?: (dateStr: string) => void;
+  initialBalance?: number;
 }
 
 const MONTHS = [
@@ -43,7 +45,7 @@ const getLocalDateStr = (d: Date) => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) {
+export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100000 }: PnLCalendarProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
   // Use current date as baseline calendar view
@@ -129,6 +131,14 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
   const getDailyPnl = (dateStr: string) => {
     const dayTrades = getTradesForDay(dateStr);
     return dayTrades.reduce((sum, t) => sum + t.pnl, 0);
+  };
+
+  // Calculate total equity on a specific date (initialBalance + cumulative PnL of all trades up to and including dateStr)
+  const getEquityForDate = (dateStr: string) => {
+    const cumulativePnl = trades
+      .filter(t => t.date <= dateStr)
+      .reduce((sum, t) => sum + t.pnl, 0);
+    return initialBalance + cumulativePnl;
   };
 
   // Calculate total monthly PNL for the viewed month (only including current month days)
@@ -273,7 +283,7 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
                       {/* Hover Pop-Up Animation Card */}
                       {day.dateStr && (
                         <div
-                          className={`opacity-0 scale-90 pointer-events-none group-hover:opacity-100 group-hover:scale-100 absolute z-50 w-72 p-3.5 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_20px_45px_-10px_rgba(15,23,42,0.16),0_0_0_1px_rgba(255,255,255,0.9)_inset] text-slate-800 font-sans text-left transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                          className={`opacity-0 scale-90 pointer-events-none group-hover:opacity-100 group-hover:scale-100 absolute z-50 w-76 p-3.5 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_20px_45px_-10px_rgba(15,23,42,0.16),0_0_0_1px_rgba(255,255,255,0.9)_inset] text-slate-800 font-sans text-left transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                             idx === 0
                               ? 'top-full mt-2.5 translate-y-[-8px] group-hover:translate-y-0'
                               : 'bottom-full mb-2.5 translate-y-[8px] group-hover:translate-y-0'
@@ -300,76 +310,88 @@ export default function PnLCalendar({ trades, onSelectDate }: PnLCalendarProps) 
                             }`}
                           />
 
-                          <div className="space-y-2.5 relative z-10">
-                            {/* Header */}
-                            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                              <div className="flex items-center gap-1.5">
+                          <div className="space-y-2 relative z-10">
+                            {/* Header with Date on left, Daily PnL + Equity Small Card on Top Right */}
+                            <div className="flex justify-between items-center pb-2 border-b border-slate-100 gap-1.5">
+                              <div className="flex items-center gap-1 shrink-0">
                                 <Calendar className="w-3.5 h-3.5 text-blue-600" />
                                 <span className="text-2xs font-extrabold font-mono text-slate-800 tracking-tight">
                                   {new Date(`${day.dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                                 </span>
                               </div>
-                              {dayTrades.length > 0 ? (
-                                <span className={`text-3xs font-black font-mono px-2 py-0.5 rounded-full border ${
-                                  dayPnl >= 10 
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' 
-                                    : dayPnl <= -10 
-                                      ? 'bg-rose-50 text-rose-700 border-rose-200/80' 
-                                      : 'bg-amber-50 text-amber-700 border-amber-200/80'
-                                }`}>
-                                  {dayPnl >= 0 ? '+' : ''}${dayPnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </span>
-                              ) : (
-                                <span className="text-3xs font-bold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-full">
-                                  No Executions
-                                </span>
-                              )}
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {dayTrades.length > 0 ? (
+                                  <span className={`text-3xs font-black font-mono px-1.5 py-0.5 rounded-full border ${
+                                    dayPnl >= 10 
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' 
+                                      : dayPnl <= -10 
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200/80' 
+                                        : 'bg-amber-50 text-amber-700 border-amber-200/80'
+                                  }`}>
+                                    {dayPnl >= 0 ? '+' : ''}${dayPnl.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                  </span>
+                                ) : (
+                                  <span className="text-3xs font-bold text-slate-400 bg-slate-100/80 px-1.5 py-0.5 rounded-full">
+                                    No Trades
+                                  </span>
+                                )}
+
+                                {/* Equity Value Small Card at Top Right */}
+                                {(() => {
+                                  const equityOnDate = getEquityForDate(day.dateStr);
+                                  return (
+                                    <div 
+                                      className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white text-3xs font-mono px-2.5 py-0.5 rounded-full border border-blue-400/30 shadow-xs font-extrabold"
+                                      title={`Account Equity on ${day.dateStr}`}
+                                    >
+                                      <Wallet size={10} className="text-blue-200 shrink-0" />
+                                      <span className="text-[8.5px] uppercase tracking-wider text-blue-200 font-sans font-black">Eq</span>
+                                      <span className="tracking-tight">${equityOnDate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                             </div>
 
-                            {/* Trades List */}
+                            {/* Trades List - Ultra Compact (Asset & PnL only) */}
                             {dayTrades.length > 0 ? (
-                              <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+                              <div className="space-y-1 max-h-52 overflow-y-auto custom-scrollbar pr-0.5">
+                                <div className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider flex justify-between items-center px-1">
+                                  <span>Trades ({dayTrades.length})</span>
+                                  <span>PnL ($)</span>
+                                </div>
                                 {dayTrades.map((t) => (
                                   <div
                                     key={t.id}
-                                    className="text-3xs bg-slate-50/90 hover:bg-indigo-50/30 p-2.5 rounded-xl border border-slate-200/70 space-y-1.5 transition-colors shadow-2xs"
+                                    className="text-xs bg-slate-50/90 hover:bg-blue-50/60 px-2 py-1 rounded-lg border border-slate-200/80 flex justify-between items-center transition-colors font-mono shadow-3xs"
                                   >
-                                    <div className="flex justify-between items-center">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-bold font-mono text-slate-900 text-xs">{t.asset}</span>
-                                        <span className={`px-1.5 py-0.3 rounded text-[8px] font-black uppercase tracking-wider ${
-                                          t.direction === 'BUY'
-                                            ? 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/20'
-                                            : 'bg-rose-500/15 text-rose-700 border border-rose-500/20'
-                                        }`}>
-                                          {t.direction}
-                                        </span>
-                                      </div>
-                                      <span className={`font-mono font-bold text-xs ${
-                                        t.pnl >= 10 ? 'text-emerald-600' : t.pnl <= -10 ? 'text-rose-600' : 'text-amber-600'
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-slate-900">{t.asset}</span>
+                                      <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase ${
+                                        t.direction === 'BUY'
+                                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                          : 'bg-rose-100 text-rose-800 border border-rose-200'
                                       }`}>
-                                        {t.pnl >= 0 ? '+' : ''}${t.pnl}
+                                        {t.direction}
                                       </span>
                                     </div>
-                                    {t.notes && (
-                                      <div className="flex items-start gap-1 text-[9.5px] text-slate-600 bg-white/90 p-1.5 rounded-lg border border-slate-200/50 font-sans italic">
-                                        <FileText className="w-2.5 h-2.5 text-slate-400 shrink-0 mt-0.5" />
-                                        <p className="line-clamp-2 leading-tight">
-                                          "{t.notes}"
-                                        </p>
-                                      </div>
-                                    )}
+                                    <span className={`font-bold ${
+                                      t.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    }`}>
+                                      {t.pnl >= 0 ? '+' : ''}${t.pnl.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="py-2.5 text-center font-sans">
+                              <div className="py-2 text-center font-sans">
                                 <p className="text-3xs text-slate-400 font-medium">No trades logged on this date.</p>
                               </div>
                             )}
 
                             {/* Footer CTA */}
-                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-blue-600 font-bold">
+                            <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-blue-600 font-bold">
                               <span>Click date to open journal logs</span>
                               <ChevronRight size={10} className="text-blue-600" />
                             </div>

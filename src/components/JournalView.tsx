@@ -1315,7 +1315,7 @@ export default function JournalView({
               <tbody className="divide-y divide-slate-50 text-xs">
                 {sortedTrades.map((trade, index) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
-                  const isExpanded = expandedTradeId === trade.id || (Boolean(dateFilter) && expandedTradeId !== `collapsed-${trade.id}`);
+                  const isExpanded = expandedTradeId === trade.id;
                   const showDateDivider = index === 0 || sortedTrades[index - 1].date !== trade.date;
 
                   return (
@@ -1340,7 +1340,7 @@ export default function JournalView({
                         className={`hover:bg-slate-50/50 transition duration-150 cursor-pointer ${
                           isExpanded ? 'bg-slate-50/30' : ''
                         }`}
-                        onClick={() => setExpandedTradeId(isExpanded ? (dateFilter ? `collapsed-${trade.id}` : null) : trade.id)}
+                        onClick={() => setExpandedTradeId(isExpanded ? null : trade.id)}
                       >
                         {/* Account Scope Column */}
                         <td className="py-3.5 px-4">

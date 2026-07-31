@@ -1423,6 +1423,7 @@ export default function App() {
         {currentTab === 'calendar' && (
           <PnLCalendar 
             trades={filteredTrades} 
+            initialBalance={totalAccountInitialBalance}
             onSelectDate={(dateStr) => {
               setSelectedJournalDate(dateStr);
               setCurrentTab('journal');
