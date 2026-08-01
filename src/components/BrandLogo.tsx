@@ -4,9 +4,10 @@ interface BrandLogoProps {
   size?: number; // Size in pixels
   className?: string;
   showText?: boolean;
+  theme?: 'dark' | 'light';
 }
 
-export default function BrandLogo({ size = 44, className = '', showText = true }: BrandLogoProps) {
+export default function BrandLogo({ size = 44, className = '', showText = true, theme = 'light' }: BrandLogoProps) {
   return (
     <div className={`flex items-center gap-3 group cursor-pointer ${className}`}>
       {/* Animated Orb Container with Glow */}
@@ -128,10 +129,16 @@ export default function BrandLogo({ size = 44, className = '', showText = true }
       {/* Brand Title text (Optional) */}
       {showText && (
         <div>
-          <span className="font-display font-black tracking-tight text-clay-foreground text-sm block leading-none group-hover:text-purple-600 transition-colors">
+          <span className={`font-display font-black tracking-tight text-base block leading-none transition-all drop-shadow-sm ${
+            theme === 'dark'
+              ? 'text-transparent bg-clip-text bg-gradient-to-r from-purple-300 via-indigo-200 to-purple-400 group-hover:from-purple-200 group-hover:to-cyan-300'
+              : 'text-transparent bg-clip-text bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-900 group-hover:from-indigo-900 group-hover:to-purple-800'
+          }`}>
             TradeForge
           </span>
-          <span className="text-4xs font-bold text-clay-muted font-mono uppercase tracking-wide block mt-0.5">
+          <span className={`text-[9px] font-bold font-mono uppercase tracking-widest block mt-1 ${
+            theme === 'dark' ? 'text-purple-300/80' : 'text-purple-900/80'
+          }`}>
             Turn Data To Discipline
           </span>
         </div>

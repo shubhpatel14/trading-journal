@@ -208,7 +208,7 @@ export default function Dashboard({
     };
   }, [trades, initialCapital]);
 
-  const activePlans = React.useMemo(() => plans.filter((plan) => plan.status === 'ACTIVE'), [plans]);
+  const activePlans = React.useMemo(() => plans.filter((plan) => plan.status === 'ACTIVE').slice(0, 1), [plans]);
 
   const recentTrades = React.useMemo(
     () =>

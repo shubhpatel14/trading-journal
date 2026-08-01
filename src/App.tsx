@@ -23,7 +23,8 @@ import {
   ShieldAlert,
   Loader2,
   ClipboardCheck,
-  Coins
+  Coins,
+  Heart
 } from 'lucide-react';
 import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES } from './mockData';
@@ -58,6 +59,7 @@ import PnLCalendar from './components/PnLCalendar';
 import InsightsView from './components/InsightsView';
 import ReviewView from './components/ReviewView';
 import BrandLogo from './components/BrandLogo';
+import LoginPage from './components/LoginPage';
 
 enum OperationType {
   CREATE = 'create',
@@ -506,57 +508,66 @@ export default function App() {
   }, []);
 
   // Sync operations handlers
-  const handleEmailPasswordAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isFirebaseConfigured || !auth) {
-      setAuthError("Firebase is not fully configured yet. Please enter Guest Mode instead.");
-      return;
-    }
-    if (!email.trim() || !password.trim()) {
-      setAuthError("Please fill out both email and password fields.");
-      return;
-    }
-    if (authMode === 'signup' && !authDisplayName.trim()) {
-      setAuthError("Please provide a display name for your profile.");
-      return;
-    }
-
+  const handleEmailPasswordAuthWithParams = async (
+    mode: 'signin' | 'signup',
+    emailInput: string,
+    passInput: string,
+    nameInput?: string
+  ) => {
     setAuthError(null);
     setAuthSubmitting(true);
 
-    try {
-      if (authMode === 'signup') {
-        const res = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(res.user, {
-          displayName: authDisplayName
-        });
-        setUser({ ...res.user, displayName: authDisplayName });
-      } else {
-        const res = await signInWithEmailAndPassword(auth, email, password);
-        setUser(res.user);
+    if (isFirebaseConfigured && auth) {
+      try {
+        if (mode === 'signup') {
+          const res = await createUserWithEmailAndPassword(auth, emailInput, passInput);
+          if (nameInput) {
+            await updateProfile(res.user, { displayName: nameInput });
+          }
+          setUser({ ...res.user, displayName: nameInput || res.user.displayName });
+        } else {
+          const res = await signInWithEmailAndPassword(auth, emailInput, passInput);
+          setUser(res.user);
+        }
+        setIsDemoUser(false);
+        localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
+        setShowAuthModal(false);
+      } catch (err: any) {
+        console.error("Email/Password authentication failed:", err);
+        let errMsg = err.message || "An authentication error occurred.";
+        if (err.code === 'auth/weak-password') {
+          errMsg = "Password should be at least 6 characters.";
+        } else if (err.code === 'auth/email-already-in-use') {
+          errMsg = "An account with this email address already exists.";
+        } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+          errMsg = "Invalid email or password. Please verify and try again.";
+        } else if (err.code === 'auth/invalid-email') {
+          errMsg = "The email address is not formatted correctly.";
+        }
+        setAuthError(errMsg);
+        throw new Error(errMsg);
+      } finally {
+        setAuthSubmitting(false);
       }
-      setIsDemoUser(false);
-      setShowAuthModal(false);
-      // Reset form fields
-      setEmail('');
-      setPassword('');
-      setAuthDisplayName('');
-    } catch (err: any) {
-      console.error("Email/Password authentication failed:", err);
-      let errMsg = err.message || "An authentication error occurred.";
-      if (err.code === 'auth/weak-password') {
-        errMsg = "Password should be at least 6 characters.";
-      } else if (err.code === 'auth/email-already-in-use') {
-        errMsg = "An account with this email address already exists.";
-      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        errMsg = "Invalid email or password. Please verify and try again.";
-      } else if (err.code === 'auth/invalid-email') {
-        errMsg = "The email address is not formatted correctly.";
-      }
-      setAuthError(errMsg);
-    } finally {
+    } else {
+      const mockUser = {
+        uid: `user-${Date.now()}`,
+        displayName: nameInput || emailInput.split('@')[0] || 'Trader',
+        email: emailInput,
+        photoURL: null
+      };
+      localStorage.setItem('TRADEPLAN_MOCK_USER', JSON.stringify(mockUser));
+      localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
+      setUser(mockUser);
+      setIsDemoUser(true);
       setAuthSubmitting(false);
+      setShowAuthModal(false);
     }
+  };
+
+  const handleEmailPasswordAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await handleEmailPasswordAuthWithParams(authMode, email, password, authDisplayName);
   };
 
   const handleSignInGoogle = async () => {
@@ -566,6 +577,7 @@ export default function App() {
       const res = await signInWithPopup(auth, googleProvider);
       setUser(res.user);
       setIsDemoUser(false);
+      localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
       setShowAuthModal(false);
     } catch (err: any) {
       console.error("Google sign in failed:", err);
@@ -575,6 +587,7 @@ export default function App() {
 
   const handleSignInGuest = async () => {
     setAuthError(null);
+    localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
     if (isFirebaseConfigured && auth) {
       try {
         const res = await signInAnonymously(auth);
@@ -610,8 +623,9 @@ export default function App() {
       }
     }
 
-    // Clear mock user state
+    // Clear mock user state & session tokens
     localStorage.removeItem('TRADEPLAN_MOCK_USER');
+    localStorage.removeItem('TRADEPLAN_LOGGED_IN');
     setUser(null);
     setIsDemoUser(false);
 
@@ -832,10 +846,6 @@ export default function App() {
   };
 
   const handleDeleteAccount = async (accId: string) => {
-    if (accounts.length <= 1) {
-      alert('You must have at least one trading account remaining.');
-      return;
-    }
     if (window.confirm('Are you sure you want to delete this trading account? Deleting the account will also filter out its linked trades from your journal views.')) {
       setAccounts(prev => prev.filter(a => a.id !== accId));
       setTrades(prev => prev.filter(t => t.accountId !== accId));
@@ -872,6 +882,35 @@ export default function App() {
   const currentAccountCurrency = selectedAccountId === 'ALL'
     ? 'USD'
     : activeAccount?.currency || 'USD';
+
+  if (firebaseLoading) {
+    return (
+      <div className="min-h-screen w-full bg-[#0b0f19] flex flex-col items-center justify-center text-white space-y-4 font-sans">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-4 border-purple-500/20 border-t-purple-500 animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <BrandLogo size={32} showText={false} />
+          </div>
+        </div>
+        <div className="text-xs font-bold text-slate-300 tracking-wider uppercase font-mono animate-pulse">
+          Launching TradeForge Session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <LoginPage
+        onEmailAuth={handleEmailPasswordAuthWithParams}
+        onGoogleAuth={handleSignInGoogle}
+        onGuestAuth={handleSignInGuest}
+        authError={authError}
+        authSubmitting={authSubmitting}
+        isFirebaseConfigured={isFirebaseConfigured}
+      />
+    );
+  }
 
   return (
     <div className="clay-scene min-h-screen flex flex-col text-clay-foreground antialiased font-sans">
@@ -1037,7 +1076,12 @@ export default function App() {
             <div className="space-y-2">
               <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Portfolio Accounts & Fee Structure</span>
               <div className="max-h-[210px] overflow-y-auto space-y-2 pr-1">
-                {accounts.map(acc => {
+                {accounts.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                    No trading accounts provisioned yet. Use the form below to add your account.
+                  </div>
+                ) : (
+                  accounts.map(acc => {
                   const accTrades = trades.filter(t => t.accountId === acc.id);
                   const accNetPnl = accTrades.reduce((sum, t) => sum + getTradeNetPnl(t, acc.commissionPerLot ?? 7), 0);
                   const isSelected = selectedAccountId === acc.id;
@@ -1106,7 +1150,8 @@ export default function App() {
                       </div>
                     </div>
                   );
-                })}
+                })
+              )}
               </div>
             </div>
 
@@ -1547,11 +1592,25 @@ export default function App() {
       </main>
 
       {/* Footer credits bar */}
-      <footer className="clay-surface mx-auto mb-6 mt-12 w-[calc(100%-2rem)] max-w-7xl py-5 text-center text-3xs text-clay-muted font-mono">
-        <div>TRADEFORGE & EXECUTIVE TRADING JOURNAL • CLIENT-SIDE PERSISTENCE SECURED</div>
-        <div className="mt-1 flex justify-center items-center gap-1.5 text-clay-accent">
-          <Database size={10} className="stroke-[3px]" />
-          <span>Local Storage Cache Active • Live UTC Session Feed</span>
+      <footer className="clay-surface mx-auto mb-6 mt-12 w-[calc(100%-2rem)] max-w-7xl px-6 py-4 flex flex-col sm:flex-row items-center justify-between text-3xs text-clay-muted font-mono gap-3">
+        {/* Left Side: Made By Shubh Patel ❤️ */}
+        <div className="flex items-center gap-1.5 font-bold text-clay-foreground bg-white/90 px-3.5 py-1.5 rounded-full border border-slate-200/80 shadow-sm">
+          <span>Made By Shubh Patel</span>
+          <Heart size={13} className="text-rose-500 fill-rose-500 animate-pulse" />
+        </div>
+
+        {/* Center: Legal / Persistence */}
+        <div className="text-center">
+          <div>TRADEFORGE & EXECUTIVE TRADING JOURNAL • CLIENT-SIDE PERSISTENCE SECURED</div>
+          <div className="mt-0.5 flex justify-center items-center gap-1.5 text-clay-accent">
+            <Database size={10} className="stroke-[3px]" />
+            <span>Local Storage Cache Active • Live UTC Session Feed</span>
+          </div>
+        </div>
+
+        {/* Right Side: Version */}
+        <div className="hidden md:block text-clay-muted font-bold">
+          v2.4 Pro Build
         </div>
       </footer>
 

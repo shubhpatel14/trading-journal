@@ -723,15 +723,7 @@ export default function JournalView({
             />
           </label>
 
-          <button
-            onClick={handleSyncMT5}
-            disabled={isSyncingMT5}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-sm cursor-pointer disabled:opacity-60"
-            title="Sync latest trades automatically from MetaTrader 5"
-          >
-            <RefreshCw size={14} className={isSyncingMT5 ? 'animate-spin' : ''} />
-            {isSyncingMT5 ? 'Syncing MT5...' : 'Sync MT5'}
-          </button>
+
 
           <button
             id="btn-log-trade"

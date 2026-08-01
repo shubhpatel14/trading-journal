@@ -11,32 +11,7 @@ export const DEFAULT_JOURNAL_RULES: JournalRule[] = [
   { id: 'rule-8', label: 'Distance to Target', description: 'Sufficient R:R distance to major target/liquidity pool' },
 ];
 
-export const INITIAL_ACCOUNTS: TradingAccount[] = [
-  {
-    id: 'acc-1',
-    name: 'Personal FTMO Funded ($100k)',
-    broker: 'FTMO',
-    initialBalance: 100000,
-    currency: 'USD',
-    commissionPerLot: 7
-  },
-  {
-    id: 'acc-2',
-    name: 'Prop Evaluation ($200k)',
-    broker: 'Funding Pips',
-    initialBalance: 200000,
-    currency: 'USD',
-    commissionPerLot: 7
-  },
-  {
-    id: 'acc-3',
-    name: 'Personal Spot Crypto',
-    broker: 'Binance',
-    initialBalance: 15000,
-    currency: 'USDT',
-    commissionPerLot: 7
-  }
-];
+export const INITIAL_ACCOUNTS: TradingAccount[] = [];
 
 export const INITIAL_TRADE_PLANS: TradePlan[] = [
   {
@@ -68,66 +43,6 @@ export const INITIAL_TRADE_PLANS: TradePlan[] = [
     triggers: 'Rejection of the Highs and some BoS on 15m to get a short-side trade. Trade after the PPI news release.',
     status: 'ACTIVE',
     createdAt: '2026-07-16T04:30:00Z'
-  },
-  {
-    id: 'plan-2',
-    date: '2026-07-15',
-    asset: 'EURUSD',
-    bias: 'BULLISH',
-    fourHour: {
-      text: 'Bouncing from daily demand zone. High liquidity sitting above current swing high.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80'
-    },
-    oneHour: {
-      text: 'Consolidating above 50 EMA. Volume profiling indicates accumulation.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=600&q=80'
-    },
-    fifteenMin: {
-      text: 'Higher high structure established. Looking for a retest of the golden pocket (61.8% Fib).',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80'
-    },
-    fiveMin: {
-      text: '5M dynamic demand holds. Re-accumulation phase before London session break.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1624996379697-f01d168b1a52?auto=format&fit=crop&w=600&q=80'
-    },
-    macroNotes: 'Fed chairman speaking later today. DXY index showing signs of weakness at key resistance.',
-    triggers: 'Limit order at 1.08450 with stop below the structure low.',
-    status: 'ARCHIVED',
-    createdAt: '2026-07-15T08:00:00Z'
-  },
-  {
-    id: 'plan-3',
-    date: '2026-07-16',
-    asset: 'BTCUSDT',
-    bias: 'BULLISH',
-    fourHour: {
-      text: 'Daily support level holds. Moving average convergence indicates a major breakout is pending.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=600&q=80'
-    },
-    oneHour: {
-      text: 'Ascending triangle forming. Spot ETF inflows increasing over consecutive sessions.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1621416894569-0f39ed31d247?auto=format&fit=crop&w=600&q=80'
-    },
-    fifteenMin: {
-      text: 'Consolidating near local range highs. Preparing for volume breakout.',
-      bias: 'NEUTRAL',
-      imageUrl: 'https://images.unsplash.com/photo-1640340434855-6084b1f4901c?auto=format&fit=crop&w=600&q=80'
-    },
-    fiveMin: {
-      text: 'Micro flag structure holding above the 5m 20 EMA.',
-      bias: 'BULLISH',
-      imageUrl: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=600&q=80'
-    },
-    macroNotes: 'Global liquidity cycle improving. Core retail sales tomorrow.',
-    triggers: 'Aggressive buy on breakout of $63,200 with local stop loss at $62,750.',
-    status: 'ACTIVE',
-    createdAt: '2026-07-16T01:15:00Z'
   }
 ];
 

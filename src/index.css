@@ -291,3 +291,154 @@
   animation: popover-spring-down 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes float-reverse {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(8px); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.animate-float-subtle {
+  animation: float-subtle 5s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 6s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s ease-in-out infinite;
+}
+
+.glow-card-border {
+  position: relative;
+}
+
+.glow-card-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.5), rgba(56, 189, 248, 0.4), rgba(236, 72, 153, 0.4));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* HEAVY ANIMATION SUITE */
+@keyframes laser-scan {
+  0% { transform: translateY(-100vh); opacity: 0; }
+  30% { opacity: 0.8; }
+  70% { opacity: 0.8; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+@keyframes float-heavy-1 {
+  0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+  33% { transform: translateY(-16px) rotate(2deg) scale(1.03); }
+  66% { transform: translateY(8px) rotate(-1deg) scale(0.98); }
+}
+
+@keyframes float-heavy-2 {
+  0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+  40% { transform: translateY(18px) rotate(-3deg) scale(1.04); }
+  80% { transform: translateY(-10px) rotate(2deg) scale(0.97); }
+}
+
+@keyframes float-heavy-3 {
+  0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+  50% { transform: translateY(-22px) rotate(3deg) scale(1.05); }
+}
+
+@keyframes float-heavy-4 {
+  0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+  50% { transform: translateY(20px) rotate(-2deg) scale(1.02); }
+}
+
+@keyframes particle-rise {
+  0% { transform: translateY(100vh) scale(0.5); opacity: 0; }
+  20% { opacity: 0.9; }
+  80% { opacity: 0.9; }
+  100% { transform: translateY(-10vh) scale(1.2); opacity: 0; }
+}
+
+@keyframes rotate-hue {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+@keyframes shimmer-fast {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes ring-pulse-glow {
+  0%, 100% { box-shadow: 0 0 15px rgba(124, 58, 237, 0.4), 0 0 30px rgba(56, 189, 248, 0.2); }
+  50% { box-shadow: 0 0 35px rgba(124, 58, 237, 0.8), 0 0 60px rgba(56, 189, 248, 0.5); }
+}
+
+.animate-laser-scan {
+  animation: laser-scan 8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-float-heavy-1 {
+  animation: float-heavy-1 7s ease-in-out infinite;
+}
+
+.animate-float-heavy-2 {
+  animation: float-heavy-2 9s ease-in-out infinite;
+}
+
+.animate-float-heavy-3 {
+  animation: float-heavy-3 8s ease-in-out infinite;
+}
+
+.animate-float-heavy-4 {
+  animation: float-heavy-4 10s ease-in-out infinite;
+}
+
+.animate-rotate-hue {
+  animation: rotate-hue 15s linear infinite;
+}
+
+.animate-shimmer-fast {
+  background-size: 200% 100%;
+  animation: shimmer-fast 3s linear infinite;
+}
+
+.animate-ring-glow {
+  animation: ring-pulse-glow 3s ease-in-out infinite;
+}
+
+/* AURORA BOREALIS COSMIC SUITE */
+@keyframes aurora-flow {
+  0% { transform: scale(1) translate(0%, 0%) rotate(0deg); }
+  33% { transform: scale(1.12) translate(4%, -3%) rotate(5deg); }
+  66% { transform: scale(0.95) translate(-3%, 4%) rotate(-4deg); }
+  100% { transform: scale(1) translate(0%, 0%) rotate(0deg); }
+}
+
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+.animate-aurora {
+  animation: aurora-flow 18s ease-in-out infinite;
+}
+
+.animate-twinkle-1 { animation: star-twinkle 3s ease-in-out infinite; }
+.animate-twinkle-2 { animation: star-twinkle 4.5s ease-in-out infinite 1s; }
+.animate-twinkle-3 { animation: star-twinkle 6s ease-in-out infinite 2s; }
+
