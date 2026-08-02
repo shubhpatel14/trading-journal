@@ -442,3 +442,58 @@
 .animate-twinkle-2 { animation: star-twinkle 4.5s ease-in-out infinite 1s; }
 .animate-twinkle-3 { animation: star-twinkle 6s ease-in-out infinite 2s; }
 
+/* Mobile Touch & Responsive Enhancements */
+@layer utilities {
+  .touch-scrolling {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(244, 241, 250, 0.5);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(124, 58, 237, 0.25);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(124, 58, 237, 0.45);
+  }
+}
+
+/* Mobile Bottom Dock Glassmorphic Bar */
+.mobile-bottom-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 -10px 30px rgba(124, 58, 237, 0.12);
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+@media (max-width: 640px) {
+  .clay-surface {
+    border-radius: 24px;
+  }
+  .clay-card {
+    border-radius: 20px;
+  }
+}
+
+

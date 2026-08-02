@@ -38,15 +38,15 @@ interface MetricCardProps {
 
 function MetricCard({ label, value, note, icon: Icon, gradient, delay = '' }: MetricCardProps) {
   return (
-    <article className={`clay-card min-h-[174px] p-5 flex flex-col justify-between ${delay}`}>
-      <div className="flex items-start justify-between gap-3">
-        <span className="text-xs font-bold uppercase tracking-wide text-clay-muted">{label}</span>
-        <div className={`clay-orb flex h-11 w-11 items-center justify-center bg-gradient-to-br ${gradient}`}>
-          <Icon size={19} className="text-white stroke-[3px]" />
+    <article className={`clay-card min-h-[160px] sm:min-h-[174px] p-4 sm:p-5 flex flex-col justify-between ${delay}`}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wide text-clay-muted">{label}</span>
+        <div className={`clay-orb flex h-9 w-9 sm:h-11 sm:w-11 shrink-0 items-center justify-center bg-gradient-to-br ${gradient}`}>
+          <Icon size={17} className="text-white stroke-[3px]" />
         </div>
       </div>
-      <div className="font-display text-3xl font-black leading-none tracking-tight text-clay-foreground break-words">{value}</div>
-      <div className="clay-pressed px-4 py-3 text-xs font-bold leading-snug text-clay-muted">{note}</div>
+      <div className="font-display text-2xl sm:text-3xl font-black leading-none tracking-tight text-clay-foreground break-words my-2">{value}</div>
+      <div className="clay-pressed px-3 py-2.5 sm:px-4 sm:py-3 text-[11px] sm:text-xs font-bold leading-snug text-clay-muted">{note}</div>
     </article>
   );
 }

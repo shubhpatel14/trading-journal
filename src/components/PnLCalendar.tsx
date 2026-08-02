@@ -247,14 +247,15 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
       </div>
 
       {/* Main Calendar Grid + Weekly columns */}
-      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-visible">
-        {/* Calendar Grid Header */}
-        <div className="grid grid-cols-8 border-b border-slate-100 bg-slate-50/50 text-center text-3xs font-bold text-slate-400 uppercase tracking-widest py-3">
-          {DAYS_OF_WEEK.map(d => (
-            <div key={d} className="font-sans">{d}</div>
-          ))}
-          <div className="text-blue-600 font-mono font-bold border-l border-slate-200/80">Weekly PnL</div>
-        </div>
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-x-auto touch-scrolling custom-scrollbar">
+        <div className="min-w-[640px] sm:min-w-0">
+          {/* Calendar Grid Header */}
+          <div className="grid grid-cols-8 border-b border-slate-100 bg-slate-50/50 text-center text-3xs font-bold text-slate-400 uppercase tracking-widest py-3">
+            {DAYS_OF_WEEK.map(d => (
+              <div key={d} className="font-sans">{d}</div>
+            ))}
+            <div className="text-blue-600 font-mono font-bold border-l border-slate-200/80">Weekly PnL</div>
+          </div>
 
         {/* Calendar Rows */}
         <div className="divide-y divide-slate-100">
@@ -473,6 +474,7 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
           })}
         </div>
       </div>
+    </div>
 
     </div>
   );

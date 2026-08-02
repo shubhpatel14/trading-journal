@@ -1520,8 +1520,8 @@ export default function JournalView({
             No trades match the current filter parameters.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto touch-scrolling custom-scrollbar">
+            <table className="w-full min-w-[760px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/20 text-3xs font-extrabold text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-4 font-sans">Account Scope</th>

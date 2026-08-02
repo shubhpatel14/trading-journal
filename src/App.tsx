@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import {
   LayoutDashboard,
   FileText,
@@ -51,15 +51,24 @@ import {
   cleanForFirestore
 } from './lib/firebase';
 
-// Import sub-components
+// Import core sub-components
 import Dashboard from './components/Dashboard';
-import TradePlanView from './components/TradePlanView';
-import JournalView from './components/JournalView';
-import PnLCalendar from './components/PnLCalendar';
-import InsightsView from './components/InsightsView';
-import ReviewView from './components/ReviewView';
 import BrandLogo from './components/BrandLogo';
 import LoginPage from './components/LoginPage';
+
+// Lazy-loaded view components for bundle optimization
+const TradePlanView = React.lazy(() => import('./components/TradePlanView'));
+const JournalView = React.lazy(() => import('./components/JournalView'));
+const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
+const InsightsView = React.lazy(() => import('./components/InsightsView'));
+const ReviewView = React.lazy(() => import('./components/ReviewView'));
+
+const ViewLoadingFallback = () => (
+  <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
+    <Loader2 size={26} className="text-clay-accent animate-spin stroke-[2.5px]" />
+    <span className="text-xs font-bold uppercase tracking-wider text-clay-muted font-mono">Optimizing Workspace View...</span>
+  </div>
+);
 
 enum OperationType {
   CREATE = 'create',
@@ -127,9 +136,13 @@ export default function App() {
   const [authDisplayName, setAuthDisplayName] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
-  // Accounts State with LocalStorage
+  // Helper to read initial state: Real Accounts use localStorage, Guest Mode uses sessionStorage (ephemeral)
+  const isRealAccountSession = () => localStorage.getItem('TRADEPLAN_LOGGED_IN') === 'true' && !sessionStorage.getItem('TRADEPLAN_IS_GUEST');
+
+  // Accounts State
   const [accounts, setAccounts] = useState<TradingAccount[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_ACCOUNTS');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_ACCOUNTS') : sessionStorage.getItem('TRADEPLAN_GUEST_ACCOUNTS');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -142,7 +155,8 @@ export default function App() {
 
   // Selected Account State
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_SELECTED_ACCOUNT_ID');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_SELECTED_ACCOUNT_ID') : sessionStorage.getItem('TRADEPLAN_GUEST_SELECTED_ACCOUNT_ID');
     return saved || 'ALL';
   });
 
@@ -154,9 +168,10 @@ export default function App() {
   const [newAccCurrency, setNewAccCurrency] = useState('USD');
   const [newAccCommission, setNewAccCommission] = useState('7.00');
 
-  // Trades State with LocalStorage
+  // Trades State
   const [trades, setTrades] = useState<Trade[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_TRADES');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_TRADES') : sessionStorage.getItem('TRADEPLAN_GUEST_TRADES');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -167,9 +182,10 @@ export default function App() {
     return INITIAL_TRADES;
   });
 
-  // Plans State with LocalStorage
+  // Plans State
   const [plans, setPlans] = useState<TradePlan[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_PLANS');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_PLANS') : sessionStorage.getItem('TRADEPLAN_GUEST_PLANS');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -180,9 +196,10 @@ export default function App() {
     return INITIAL_TRADE_PLANS;
   });
 
-  // Daily Reviews State with LocalStorage
+  // Daily Reviews State
   const [dailyReviews, setDailyReviews] = useState<DailyReview[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_DAILY_REVIEWS');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_DAILY_REVIEWS') : sessionStorage.getItem('TRADEPLAN_GUEST_DAILY_REVIEWS');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -193,9 +210,10 @@ export default function App() {
     return [];
   });
 
-  // Weekly Reviews State with LocalStorage
+  // Weekly Reviews State
   const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_WEEKLY_REVIEWS');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_WEEKLY_REVIEWS') : sessionStorage.getItem('TRADEPLAN_GUEST_WEEKLY_REVIEWS');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -206,19 +224,10 @@ export default function App() {
     return [];
   });
 
-  // Synchronize Daily Reviews to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('TRADEPLAN_DAILY_REVIEWS', JSON.stringify(dailyReviews));
-  }, [dailyReviews]);
-
-  // Synchronize Weekly Reviews to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
-  }, [weeklyReviews]);
-
-  // Journal Rules State with LocalStorage
+  // Journal Rules State
   const [journalRules, setJournalRules] = useState<JournalRule[]>(() => {
-    const saved = localStorage.getItem('TRADEPLAN_JOURNAL_RULES');
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_JOURNAL_RULES') : sessionStorage.getItem('TRADEPLAN_GUEST_JOURNAL_RULES');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -229,10 +238,6 @@ export default function App() {
     }
     return DEFAULT_JOURNAL_RULES;
   });
-
-  useEffect(() => {
-    localStorage.setItem('TRADEPLAN_JOURNAL_RULES', JSON.stringify(journalRules));
-  }, [journalRules]);
 
   const handleAddJournalRule = (rule: Omit<JournalRule, 'id'>) => {
     const newRule: JournalRule = {
@@ -327,25 +332,68 @@ export default function App() {
   // Prefilled state for executing plans
   const [prefillTrade, setPrefillTrade] = useState<Partial<Trade> | null>(null);
 
-  // Synchronize Accounts to LocalStorage
+  // Synchronize Accounts (sessionStorage for Guest Mode, localStorage for Real Accounts)
   useEffect(() => {
-    localStorage.setItem('TRADEPLAN_ACCOUNTS', JSON.stringify(accounts));
-  }, [accounts]);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_ACCOUNTS', JSON.stringify(accounts));
+    } else {
+      localStorage.setItem('TRADEPLAN_ACCOUNTS', JSON.stringify(accounts));
+    }
+  }, [accounts, isDemoUser]);
 
-  // Synchronize Selected Account ID to LocalStorage
+  // Synchronize Selected Account ID
   useEffect(() => {
-    localStorage.setItem('TRADEPLAN_SELECTED_ACCOUNT_ID', selectedAccountId);
-  }, [selectedAccountId]);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_SELECTED_ACCOUNT_ID', selectedAccountId);
+    } else {
+      localStorage.setItem('TRADEPLAN_SELECTED_ACCOUNT_ID', selectedAccountId);
+    }
+  }, [selectedAccountId, isDemoUser]);
 
-  // Synchronize Trades to LocalStorage
+  // Synchronize Trades
   useEffect(() => {
-    localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
-  }, [trades]);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_TRADES', JSON.stringify(trades));
+    } else {
+      localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
+    }
+  }, [trades, isDemoUser]);
 
-  // Synchronize Plans to LocalStorage
+  // Synchronize Plans
   useEffect(() => {
-    localStorage.setItem('TRADEPLAN_PLANS', JSON.stringify(plans));
-  }, [plans]);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_PLANS', JSON.stringify(plans));
+    } else {
+      localStorage.setItem('TRADEPLAN_PLANS', JSON.stringify(plans));
+    }
+  }, [plans, isDemoUser]);
+
+  // Synchronize Daily Reviews
+  useEffect(() => {
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_DAILY_REVIEWS', JSON.stringify(dailyReviews));
+    } else {
+      localStorage.setItem('TRADEPLAN_DAILY_REVIEWS', JSON.stringify(dailyReviews));
+    }
+  }, [dailyReviews, isDemoUser]);
+
+  // Synchronize Weekly Reviews
+  useEffect(() => {
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
+    } else {
+      localStorage.setItem('TRADEPLAN_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
+    }
+  }, [weeklyReviews, isDemoUser]);
+
+  // Synchronize Journal Rules
+  useEffect(() => {
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_JOURNAL_RULES', JSON.stringify(journalRules));
+    } else {
+      localStorage.setItem('TRADEPLAN_JOURNAL_RULES', JSON.stringify(journalRules));
+    }
+  }, [journalRules, isDemoUser]);
 
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
@@ -466,16 +514,26 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    // If not configured, look for mock user login in localStorage
+    // Check for explicit mock user in localStorage
     const savedMock = localStorage.getItem('TRADEPLAN_MOCK_USER');
+    const isGuestSession = sessionStorage.getItem('TRADEPLAN_IS_GUEST') === 'true';
+
     if (savedMock) {
       try {
         const parsedMock = JSON.parse(savedMock);
         setUser(parsedMock);
-        setIsDemoUser(true);
+        setIsDemoUser(false);
       } catch (e) {
         localStorage.removeItem('TRADEPLAN_MOCK_USER');
       }
+    } else if (isGuestSession) {
+      setUser({
+        uid: 'guest-demo-sandbox',
+        displayName: 'Guest Demo Trader',
+        email: 'guest@demo.local',
+        photoURL: null
+      });
+      setIsDemoUser(true);
     }
 
     if (!isFirebaseConfigured || !auth) {
@@ -488,18 +546,10 @@ export default function App() {
         setUser(currentUser);
         setIsDemoUser(false);
         await loadUserData(currentUser.uid);
-      } else {
-        // Revert to local cache if no mock is present
-        if (!localStorage.getItem('TRADEPLAN_MOCK_USER')) {
-          setUser(null);
-          const savedAccounts = localStorage.getItem('TRADEPLAN_ACCOUNTS');
-          const savedTrades = localStorage.getItem('TRADEPLAN_TRADES');
-          const savedPlans = localStorage.getItem('TRADEPLAN_PLANS');
-
-          if (savedAccounts) setAccounts(JSON.parse(savedAccounts));
-          if (savedTrades) setTrades(JSON.parse(savedTrades));
-          if (savedPlans) setPlans(JSON.parse(savedPlans));
-        }
+      } else if (!localStorage.getItem('TRADEPLAN_MOCK_USER') && !sessionStorage.getItem('TRADEPLAN_IS_GUEST')) {
+        // Unauthenticated: render LoginPage
+        setUser(null);
+        setIsDemoUser(false);
       }
       setFirebaseLoading(false);
     });
@@ -587,30 +637,19 @@ export default function App() {
 
   const handleSignInGuest = async () => {
     setAuthError(null);
-    localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
-    if (isFirebaseConfigured && auth) {
-      try {
-        const res = await signInAnonymously(auth);
-        setUser(res.user);
-        setIsDemoUser(false);
-        setShowAuthModal(false);
-      } catch (err: any) {
-        console.error("Anonymous login failed:", err);
-        setAuthError(err.message || "Failed to log in anonymously.");
-      }
-    } else {
-      // Setup demo offline mock user
-      const demoUser = {
-        uid: 'demo-user-123',
-        displayName: 'Demo Guest Trader',
-        email: 'guest@tradeplan.io',
-        photoURL: null
-      };
-      localStorage.setItem('TRADEPLAN_MOCK_USER', JSON.stringify(demoUser));
-      setUser(demoUser);
-      setIsDemoUser(true);
-      setShowAuthModal(false);
-    }
+    setIsDemoUser(true);
+    sessionStorage.setItem('TRADEPLAN_IS_GUEST', 'true');
+    localStorage.removeItem('TRADEPLAN_LOGGED_IN');
+    localStorage.removeItem('TRADEPLAN_MOCK_USER');
+
+    const demoUser = {
+      uid: 'guest-demo-sandbox',
+      displayName: 'Guest Demo Trader',
+      email: 'guest@demo.local',
+      photoURL: null
+    };
+    setUser(demoUser);
+    setShowAuthModal(false);
   };
 
   const handleAuthSignOut = async () => {
@@ -623,20 +662,31 @@ export default function App() {
       }
     }
 
-    // Clear mock user state & session tokens
+    // Clear user state & session tokens
     localStorage.removeItem('TRADEPLAN_MOCK_USER');
     localStorage.removeItem('TRADEPLAN_LOGGED_IN');
+    sessionStorage.removeItem('TRADEPLAN_IS_GUEST');
+    
+    // Clear ephemeral guest session memory
+    sessionStorage.removeItem('TRADEPLAN_GUEST_ACCOUNTS');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_TRADES');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_PLANS');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_DAILY_REVIEWS');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_WEEKLY_REVIEWS');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_JOURNAL_RULES');
+
     setUser(null);
     setIsDemoUser(false);
+    setShowAuthModal(false);
 
-    // Reset local data from cache
-    const savedAccounts = localStorage.getItem('TRADEPLAN_ACCOUNTS');
-    const savedTrades = localStorage.getItem('TRADEPLAN_TRADES');
-    const savedPlans = localStorage.getItem('TRADEPLAN_PLANS');
-
-    setAccounts(savedAccounts ? JSON.parse(savedAccounts) : INITIAL_ACCOUNTS);
-    setTrades(savedTrades ? JSON.parse(savedTrades) : INITIAL_TRADES);
-    setPlans(savedPlans ? JSON.parse(savedPlans) : INITIAL_TRADE_PLANS);
+    // Reset state to clean initial demo data
+    setAccounts(INITIAL_ACCOUNTS);
+    setTrades(INITIAL_TRADES);
+    setPlans(INITIAL_TRADE_PLANS);
+    setJournalRules(DEFAULT_JOURNAL_RULES);
+    setDailyReviews([]);
+    setWeeklyReviews([]);
+    setSelectedAccountId('ALL');
   };
 
   // Event Handlers for Trades
@@ -916,21 +966,21 @@ export default function App() {
     <div className="clay-scene min-h-screen flex flex-col text-clay-foreground antialiased font-sans">
 
       {/* Upper Navigation Header */}
-      <header className="relative z-30 px-3 py-3">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="clay-surface flex flex-wrap justify-between items-center gap-3 px-4 py-3 sm:px-5">
+      <header className="relative z-30 px-2 sm:px-3 py-2 sm:py-3">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+          <div className="clay-surface flex flex-wrap justify-between items-center gap-2 sm:gap-3 px-3 py-2.5 sm:px-5 sm:py-3">
 
             {/* Logo brand */}
-            <BrandLogo size={44} />
+            <BrandLogo size={36} />
 
             {/* Account Switcher Component */}
-            <div className="flex items-center gap-2 order-3 w-full md:order-none md:w-auto">
-              <div className="clay-pressed flex items-center gap-1.5 px-3 py-2 w-full md:w-auto">
-                <Database size={14} className="text-clay-accent stroke-[3px]" />
+            <div className="flex items-center gap-2 order-3 w-full sm:w-auto sm:order-none">
+              <div className="clay-pressed flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 w-full sm:w-auto">
+                <Database size={13} className="text-clay-accent stroke-[3px] shrink-0" />
                 <select
                   value={selectedAccountId}
                   onChange={(e) => setSelectedAccountId(e.target.value)}
-                  className="text-2xs font-bold text-clay-foreground bg-transparent border-none focus:outline-none cursor-pointer font-sans w-full md:max-w-[320px]"
+                  className="text-2xs font-bold text-clay-foreground bg-transparent border-none focus:outline-none cursor-pointer font-sans w-full sm:max-w-[280px] md:max-w-[320px] truncate"
                 >
                   <option value="ALL">Consolidated Views (All Accounts)</option>
                   {accounts.map(acc => (
@@ -941,7 +991,7 @@ export default function App() {
                 </select>
                 <button
                   onClick={() => setShowAccountModal(true)}
-                  className="rounded-full p-1.5 text-clay-muted hover:bg-white hover:text-clay-accent transition cursor-pointer"
+                  className="rounded-full p-1.5 text-clay-muted hover:bg-white hover:text-clay-accent transition cursor-pointer shrink-0"
                   title="Configure Accounts"
                 >
                   <Settings size={13} />
@@ -949,8 +999,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Main Tabs Navigation */}
-            <nav className="hidden lg:flex gap-2">
+            {/* Main Tabs Navigation (Desktop) */}
+            <nav className="hidden lg:flex gap-1.5 xl:gap-2">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'plans', label: 'Setup Plans', icon: FileText },
@@ -972,7 +1022,7 @@ export default function App() {
                         setSelectedJournalDate(null);
                       }
                     }}
-                    className={`flex items-center gap-1.5 rounded-[20px] px-3.5 py-2 text-xs font-bold transition-all duration-200 cursor-pointer ${isActive
+                    className={`flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 xl:px-3.5 xl:py-2 text-2xs xl:text-xs font-bold transition-all duration-200 cursor-pointer ${isActive
                       ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]'
                       : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent hover:-translate-y-1'
                       }`}
@@ -984,19 +1034,19 @@ export default function App() {
               })}
             </nav>
 
-            {/* Reset helper bar */}
-            <div className="flex items-center gap-2">
+            {/* Reset & Sync Helper Bar */}
+            <div className="flex items-center gap-1.5 sm:gap-2 order-2 sm:order-none">
               {/* Cloud Sync Button */}
               {firebaseLoading ? (
-                <div className="clay-pressed flex items-center gap-1 px-3 py-2 text-clay-muted text-3xs font-bold uppercase">
+                <div className="clay-pressed flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 text-clay-muted text-3xs font-bold uppercase">
                   <Loader2 size={10} className="animate-spin" />
-                  <span>Checking...</span>
+                  <span className="hidden sm:inline">Checking...</span>
                 </div>
               ) : user ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className={`flex items-center gap-1.5 rounded-[18px] px-3 py-2 text-3xs font-bold uppercase transition-all duration-200 cursor-pointer shadow-clayButton hover:-translate-y-1 ${isDemoUser
+                    className={`flex items-center gap-1.5 rounded-[18px] px-2.5 py-1.5 sm:px-3 sm:py-2 text-3xs font-bold uppercase transition-all duration-200 cursor-pointer shadow-clayButton hover:-translate-y-1 ${isDemoUser
                       ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white'
                       : 'bg-gradient-to-br from-emerald-300 to-emerald-500 text-white'
                       }`}
@@ -1006,48 +1056,86 @@ export default function App() {
                       <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isDemoUser ? 'bg-amber-400' : 'bg-green-400'}`}></span>
                       <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isDemoUser ? 'bg-amber-500' : 'bg-green-500'}`}></span>
                     </div>
-                    <span>{isDemoUser ? "Guest Mode" : `${user.displayName || user.email?.split('@')[0] || 'Cloud Active'}`}</span>
+                    <span>{isDemoUser ? "Guest" : `${user.displayName?.split(' ')[0] || user.email?.split('@')[0] || 'Sync'}`}</span>
                     {isCloudSyncing && <RefreshCw size={9} className="animate-spin ml-0.5" />}
                   </button>
 
                   <button
                     onClick={handleAuthSignOut}
-                    className="clay-button clay-button-secondary min-h-0 px-3 py-2 text-3xs uppercase"
+                    className="clay-button clay-button-secondary min-h-0 px-2 py-1.5 sm:px-3 sm:py-2 text-3xs uppercase"
                     title="Sign out of current account"
                   >
                     <LogOut size={10} />
-                    <span>Log Out</span>
+                    <span className="hidden md:inline">Log Out</span>
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <span className="clay-pill text-[10px] font-mono uppercase">
-                    Guest Mode
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="clay-pill text-[9px] sm:text-[10px] font-mono uppercase hidden sm:inline-flex">
+                    Guest
                   </span>
                   <button
                     onClick={() => setShowAuthModal(true)}
-                    className="clay-button clay-button-primary min-h-0 px-3 py-2 text-3xs uppercase"
+                    className="clay-button clay-button-primary min-h-0 px-2.5 py-1.5 sm:px-3 sm:py-2 text-3xs uppercase"
                     title="Sign in or register an account to backup data"
                   >
                     <LogIn size={10} />
-                    <span>User Login</span>
+                    <span>Login</span>
                   </button>
                 </div>
               )}
 
               <button
                 onClick={handleResetData}
-                className="clay-button clay-button-secondary min-h-0 px-3 py-2 text-3xs uppercase"
+                className="clay-button clay-button-secondary min-h-0 px-2 py-1.5 sm:px-3 sm:py-2 text-3xs uppercase"
                 title="Reset to preloaded Gold demo data"
               >
                 <RefreshCw size={10} />
-                Reset Demo
+                <span className="hidden sm:inline">Reset Demo</span>
               </button>
             </div>
 
           </div>
         </div>
       </header>
+
+      {/* Mobile Fixed Bottom Dock Navigation */}
+      <div className="mobile-bottom-dock lg:hidden">
+        <div className="flex justify-around items-center px-1 py-1.5">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'plans', label: 'Plans', icon: FileText },
+            { id: 'journal', label: 'Journal', icon: BookOpen },
+            { id: 'calendar', label: 'Calendar', icon: Calendar },
+            { id: 'insights', label: 'Insights', icon: BrainCircuit },
+            { id: 'reviews', label: 'Reviews', icon: ClipboardCheck }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = currentTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setCurrentTab(tab.id);
+                  if (tab.id !== 'journal') {
+                    setPrefillTrade(null);
+                    setSelectedJournalDate(null);
+                  }
+                }}
+                className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all duration-200 cursor-pointer ${isActive
+                  ? 'text-clay-accent scale-105 font-black'
+                  : 'text-clay-muted hover:text-clay-foreground opacity-80'
+                  }`}
+              >
+                <div className={`p-1.5 rounded-full transition-all ${isActive ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton' : 'bg-transparent'}`}>
+                  <Icon size={16} className="stroke-[2.5px]" />
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-wider">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Account Switcher / Management Modal */}
       {showAccountModal && (
@@ -1469,125 +1557,93 @@ export default function App() {
         </div>
       )}
 
-      {/* Mobile Sticky Tab bar */}
-      <div className="lg:hidden clay-surface mx-4 mt-2 py-3 px-4 relative z-20 overflow-x-auto flex gap-2 scrollbar-none">
-        {[
-          { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-          { id: 'plans', label: 'Plans', icon: FileText },
-          { id: 'journal', label: 'Journal', icon: BookOpen },
-          { id: 'calendar', label: 'Calendar', icon: Calendar },
-          { id: 'insights', label: 'Insights', icon: BrainCircuit },
-          { id: 'reviews', label: 'Reviews', icon: ClipboardCheck }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = currentTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setCurrentTab(tab.id);
-                if (tab.id !== 'journal') {
-                  setPrefillTrade(null);
-                  setSelectedJournalDate(null);
+      {/* Main Content Viewport */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 lg:pb-8">
+
+        <Suspense fallback={<ViewLoadingFallback />}>
+          {currentTab === 'dashboard' && (
+            <Dashboard
+              trades={filteredTrades}
+              plans={plans}
+              onNavigate={(tab) => setCurrentTab(tab)}
+              onExecutePlan={handleExecutePlan}
+              onOpenNewTrade={() => {
+                setPrefillTrade(null);
+                setSelectedJournalDate(null);
+                setCurrentTab('journal');
+              }}
+              initialCapital={totalAccountInitialBalance}
+              currencySymbol={currentAccountCurrency}
+            />
+          )}
+
+          {currentTab === 'plans' && (
+            <TradePlanView
+              plans={plans}
+              onAddPlan={handleAddPlan}
+              onDeletePlan={handleDeletePlan}
+              onArchivePlan={handleArchivePlan}
+              onExecutePlan={handleExecutePlan}
+            />
+          )}
+
+          {currentTab === 'journal' && (
+            <JournalView
+              trades={filteredTrades}
+              accounts={accounts}
+              selectedAccountId={selectedAccountId}
+              journalRules={journalRules}
+              onAddRule={handleAddJournalRule}
+              onEditRule={handleEditJournalRule}
+              onDeleteRule={handleDeleteJournalRule}
+              onResetRules={handleResetJournalRules}
+              onAddTrade={handleAddTrade}
+              onEditTrade={handleEditTrade}
+              onDeleteTrade={handleDeleteTrade}
+              prefillTrade={prefillTrade}
+              onClearPrefill={() => setPrefillTrade(null)}
+              onImportBackup={handleImportBackup}
+              onRefreshData={async () => {
+                if (user?.uid) {
+                  await loadUserData(user.uid);
                 }
               }}
-              className={`flex items-center gap-1 rounded-[18px] px-3 py-2 text-2xs font-bold uppercase whitespace-nowrap cursor-pointer transition-all duration-200 ${isActive
-                ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton'
-                : 'text-clay-muted hover:bg-white/70 hover:text-clay-accent'
-                }`}
-            >
-              <Icon size={12} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+              initialDateFilter={selectedJournalDate}
+              onClearDateFilter={() => setSelectedJournalDate(null)}
+            />
+          )}
 
-      {/* Main Content Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {currentTab === 'calendar' && (
+            <PnLCalendar 
+              trades={filteredTrades} 
+              initialBalance={totalAccountInitialBalance}
+              onSelectDate={(dateStr) => {
+                setSelectedJournalDate(dateStr);
+                setCurrentTab('journal');
+              }}
+            />
+          )}
 
-        {currentTab === 'dashboard' && (
-          <Dashboard
-            trades={filteredTrades}
-            plans={plans}
-            onNavigate={(tab) => setCurrentTab(tab)}
-            onExecutePlan={handleExecutePlan}
-            onOpenNewTrade={() => {
-              setPrefillTrade(null);
-              setSelectedJournalDate(null);
-              setCurrentTab('journal');
-            }}
-            initialCapital={totalAccountInitialBalance}
-            currencySymbol={currentAccountCurrency}
-          />
-        )}
+          {currentTab === 'insights' && (
+            <InsightsView
+              trades={filteredTrades}
+              selectedAccountId={selectedAccountId}
+              accounts={accounts}
+            />
+          )}
 
-        {currentTab === 'plans' && (
-          <TradePlanView
-            plans={plans}
-            onAddPlan={handleAddPlan}
-            onDeletePlan={handleDeletePlan}
-            onArchivePlan={handleArchivePlan}
-            onExecutePlan={handleExecutePlan}
-          />
-        )}
-
-        {currentTab === 'journal' && (
-          <JournalView
-            trades={filteredTrades}
-            accounts={accounts}
-            selectedAccountId={selectedAccountId}
-            journalRules={journalRules}
-            onAddRule={handleAddJournalRule}
-            onEditRule={handleEditJournalRule}
-            onDeleteRule={handleDeleteJournalRule}
-            onResetRules={handleResetJournalRules}
-            onAddTrade={handleAddTrade}
-            onEditTrade={handleEditTrade}
-            onDeleteTrade={handleDeleteTrade}
-            prefillTrade={prefillTrade}
-            onClearPrefill={() => setPrefillTrade(null)}
-            onImportBackup={handleImportBackup}
-            onRefreshData={async () => {
-              if (user?.uid) {
-                await loadUserData(user.uid);
-              }
-            }}
-            initialDateFilter={selectedJournalDate}
-            onClearDateFilter={() => setSelectedJournalDate(null)}
-          />
-        )}
-
-        {currentTab === 'calendar' && (
-          <PnLCalendar 
-            trades={filteredTrades} 
-            initialBalance={totalAccountInitialBalance}
-            onSelectDate={(dateStr) => {
-              setSelectedJournalDate(dateStr);
-              setCurrentTab('journal');
-            }}
-          />
-        )}
-
-        {currentTab === 'insights' && (
-          <InsightsView
-            trades={filteredTrades}
-            selectedAccountId={selectedAccountId}
-            accounts={accounts}
-          />
-        )}
-
-        {currentTab === 'reviews' && (
-          <ReviewView
-            trades={filteredTrades}
-            dailyReviews={dailyReviews}
-            weeklyReviews={weeklyReviews}
-            onAddDailyReview={handleAddDailyReview}
-            onDeleteDailyReview={handleDeleteDailyReview}
-            onAddWeeklyReview={handleAddWeeklyReview}
-            onDeleteWeeklyReview={handleDeleteWeeklyReview}
-          />
-        )}
+          {currentTab === 'reviews' && (
+            <ReviewView
+              trades={filteredTrades}
+              dailyReviews={dailyReviews}
+              weeklyReviews={weeklyReviews}
+              onAddDailyReview={handleAddDailyReview}
+              onDeleteDailyReview={handleDeleteDailyReview}
+              onAddWeeklyReview={handleAddWeeklyReview}
+              onDeleteWeeklyReview={handleDeleteWeeklyReview}
+            />
+          )}
+        </Suspense>
 
       </main>
 

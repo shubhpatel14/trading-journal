@@ -53,7 +53,6 @@ export default function LoginPage({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<'analytics' | 'discipline' | 'playbook'>('analytics');
   const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
-  const [isHovered, setIsHovered] = useState(false);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -61,7 +60,6 @@ export default function LoginPage({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     });
-    if (!isHovered) setIsHovered(true);
   };
 
   // Password strength calculation for registration mode
@@ -115,41 +113,15 @@ export default function LoginPage({
   return (
     <div 
       onMouseMove={handleMouseMove}
-      className="min-h-screen w-full bg-[#070a13] text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans selection:bg-purple-500 selection:text-white cursor-default"
+      className="min-h-screen w-full bg-[#070a13] text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans selection:bg-purple-500 selection:text-white"
     >
-      {/* Interactive Cursor Spotlight Glow Effect */}
+      {/* Interactive Ambient Spotlight Glow Effect */}
       <div 
         className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
         style={{
-          background: `radial-gradient(700px circle at ${mousePos.x}px ${mousePos.y}px, rgba(168, 85, 247, 0.18), rgba(56, 189, 248, 0.13), rgba(52, 211, 153, 0.05), transparent 75%)`
+          background: `radial-gradient(750px circle at ${mousePos.x}px ${mousePos.y}px, rgba(168, 85, 247, 0.15), rgba(56, 189, 248, 0.1), rgba(244, 114, 182, 0.05), transparent 75%)`
         }}
       />
-
-      {/* Dynamic Cursor Light Orb Tracking Mouse */}
-      <div 
-        className="absolute w-[32rem] h-[32rem] rounded-full bg-gradient-to-r from-purple-600/30 via-cyan-500/25 to-pink-500/20 blur-[110px] pointer-events-none transition-transform duration-75 ease-out z-0"
-        style={{
-          transform: `translate3d(${mousePos.x - 256}px, ${mousePos.y - 256}px, 0px)`
-        }}
-      />
-
-      {/* Custom Glowing Cyber Cursor Follower Ring */}
-      {isHovered && (
-        <div
-          className="absolute pointer-events-none z-50 transition-transform duration-100 ease-out hidden md:block"
-          style={{
-            left: `${mousePos.x}px`,
-            top: `${mousePos.y}px`,
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          {/* Outer Pulsing Cyber Ring */}
-          <div className="w-7 h-7 rounded-full border border-cyan-400/70 bg-cyan-400/10 shadow-[0_0_12px_rgba(56,189,248,0.5)] flex items-center justify-center animate-pulse">
-            {/* Inner Core Pointer Dot */}
-            <div className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#ffffff]" />
-          </div>
-        </div>
-      )}
       
       {/* Explicit High-Frequency CSS Keyframes */}
       <style>{`
@@ -844,15 +816,21 @@ export default function LoginPage({
               </div>
 
               {/* Guest Mode Direct Access */}
-              <button
-                type="button"
-                onClick={onGuestAuth}
-                disabled={authSubmitting}
-                className="w-full py-2.5 px-4 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-              >
-                <Sparkles size={14} className="text-amber-400 animate-pulse" />
-                <span>Instant Demo Access (No Credentials Required)</span>
-              </button>
+              <div className="space-y-1 pt-1">
+                <button
+                  type="button"
+                  onClick={onGuestAuth}
+                  disabled={authSubmitting}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-purple-900/40 via-indigo-900/40 to-slate-900 hover:from-purple-900/60 hover:to-indigo-900/60 text-purple-200 border border-purple-400/40 hover:border-purple-400/70 font-extrabold text-xs rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <Sparkles size={15} className="text-amber-400 fill-amber-400/30 animate-pulse" />
+                  <span>Instant Demo Access (No Sign In Required)</span>
+                </button>
+                <div className="text-[10px] text-center text-slate-400 font-mono flex items-center justify-center gap-1 pt-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block animate-ping" />
+                  <span>Temporary Sandbox Mode — Data resets once browser tab is closed</span>
+                </div>
+              </div>
             </div>
 
             {/* Security Footer Note */}
