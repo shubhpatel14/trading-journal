@@ -1458,7 +1458,7 @@ export default function App() {
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Shubh Trader"
+                          placeholder="shubh patel"
                           value={authDisplayName}
                           onChange={(e) => setAuthDisplayName(e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-750 focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
@@ -1471,7 +1471,7 @@ export default function App() {
                       <input
                         type="email"
                         required
-                        placeholder="you@domain.com"
+                        placeholder="shubhpatel@gmail.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-750 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"

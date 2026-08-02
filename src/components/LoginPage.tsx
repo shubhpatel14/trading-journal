@@ -635,10 +635,10 @@ export default function LoginPage({
                     <input
                       type="text"
                       required={mode === 'signup'}
-                      placeholder="e.g. Alex Morgan"
+                      placeholder="shubh patel"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30 transition-all font-sans"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30 transition-all font-sans font-medium"
                     />
                   </div>
                 </div>
@@ -652,10 +652,10 @@ export default function LoginPage({
                   <input
                     type="email"
                     required
-                    placeholder="trader@tradeforge.io"
+                    placeholder="shubhpatel@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30 transition-all font-sans"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30 transition-all font-sans font-medium"
                   />
                 </div>
               </div>
