@@ -441,10 +441,10 @@ export default function App() {
         loadedWeeklyReviews.push({ id: docSnap.id, ...docSnap.data() } as WeeklyReview);
       });
 
-      // Normalize trades loaded from Firestore (default status to COMPLETE if notes/checklist or closed)
+      // Normalize trades loaded from Firestore (default status to PENDING unless checklist evaluated)
       const normalizedLoadedTrades = loadedTrades.map(t => ({
         ...t,
-        journalingStatus: t.journalingStatus || (t.notes || (t.checklist && Object.keys(t.checklist).length > 0) || t.status !== 'OPEN' ? 'COMPLETE' : 'PENDING')
+        journalingStatus: t.journalingStatus || (t.checklistScore !== undefined && t.checklistScore > 0 ? 'COMPLETE' : 'PENDING')
       }));
 
       const batch = writeBatch(db);
@@ -465,7 +465,7 @@ export default function App() {
       } else if (trades.length > 0) {
         const cleanedLocalTrades = trades.map(t => ({
           ...t,
-          journalingStatus: t.journalingStatus || 'COMPLETE'
+          journalingStatus: t.journalingStatus || 'PENDING'
         }));
         setTrades(cleanedLocalTrades);
         cleanedLocalTrades.forEach(t => {
@@ -694,7 +694,7 @@ export default function App() {
     const trade: Trade = {
       ...newTrade,
       id: `trade-${Date.now()}`,
-      journalingStatus: newTrade.journalingStatus || 'COMPLETE'
+      journalingStatus: newTrade.journalingStatus || 'PENDING'
     };
     setTrades(prev => [trade, ...prev]);
 

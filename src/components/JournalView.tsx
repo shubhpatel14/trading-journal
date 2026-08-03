@@ -34,6 +34,7 @@ import {
   Coins
 } from 'lucide-react';
 import { Trade, TradingAccount, JournalRule, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
 
 interface JournalViewProps {
   trades: Trade[];
@@ -175,7 +176,39 @@ export default function JournalView({
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
   const [notes, setNotes] = useState('');
   const [formChecklist, setFormChecklist] = useState<Record<string, boolean>>({});
-  const [formJournalingStatus, setFormJournalingStatus] = useState<'COMPLETE' | 'PENDING'>('COMPLETE');
+  const [formJournalingStatus, setFormJournalingStatus] = useState<'COMPLETE' | 'PENDING'>('PENDING');
+
+  // Custom Mistakes State & Handlers
+  const [availableMistakes, setAvailableMistakes] = useState<string[]>(getStoredMistakes);
+  const [showAddMistakeInput, setShowAddMistakeInput] = useState(false);
+  const [newMistakeInput, setNewMistakeInput] = useState('');
+
+  const handleAddCustomMistake = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (!availableMistakes.some(m => m.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = [...availableMistakes, trimmed];
+      setAvailableMistakes(updated);
+      saveStoredMistakes(updated);
+    }
+    setNewMistakeInput('');
+    setShowAddMistakeInput(false);
+  };
+
+  const handleDeleteCustomMistake = (mistakeToDelete: string) => {
+    if (mistakeToDelete === 'None') return;
+    const updated = availableMistakes.filter(m => m !== mistakeToDelete);
+    setAvailableMistakes(updated);
+    saveStoredMistakes(updated);
+    setSelectedMistakes(prev => {
+      const filtered = prev.filter(m => m !== mistakeToDelete);
+      return filtered.length === 0 ? ['None'] : filtered;
+    });
+    setJournalingMistakes(prev => {
+      const filtered = prev.filter(m => m !== mistakeToDelete);
+      return filtered.length === 0 ? ['None'] : filtered;
+    });
+  };
 
   // Quick Journal / Score Modal state
   const [journalingTrade, setJournalingTrade] = useState<Trade | null>(null);
@@ -577,7 +610,7 @@ export default function JournalView({
 
   const getIsTradeCompleted = (t: Trade) => {
     if (t.journalingStatus) return t.journalingStatus === 'COMPLETE';
-    return Boolean(t.notes || (t.checklist && Object.keys(t.checklist).length > 0) || t.status !== 'OPEN');
+    return Boolean(t.checklistScore !== undefined && t.checklistScore > 0);
   };
 
   const completedCount = trades.filter(getIsTradeCompleted).length;
@@ -1169,27 +1202,86 @@ export default function JournalView({
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Execution Reflections / Psychology check (Mistakes)
-              </label>
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider">
+                  Execution Reflections / Psychology check (Mistakes)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddMistakeInput(!showAddMistakeInput)}
+                  className="text-3xs font-extrabold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200/60 flex items-center gap-1 cursor-pointer transition"
+                  title="Add custom psychology metric tag"
+                >
+                  <Plus size={11} />
+                  <span>Add Metric</span>
+                </button>
+              </div>
+
+              {showAddMistakeInput && (
+                <div className="flex items-center gap-2 mb-3 bg-blue-50/50 p-2 border border-blue-200/80 rounded-xl animate-fadeIn">
+                  <input
+                    type="text"
+                    value={newMistakeInput}
+                    onChange={(e) => setNewMistakeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomMistake(newMistakeInput);
+                      }
+                    }}
+                    placeholder="Enter custom mistake metric (e.g. Revenge Trade, Late Entry)..."
+                    className="flex-1 px-3 py-1 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-sans"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustomMistake(newMistakeInput)}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMistakeInput(false);
+                      setNewMistakeInput('');
+                    }}
+                    className="p-1 hover:bg-slate-200 text-slate-500 rounded-lg transition cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-1.5">
-                {AVAILABLE_MISTAKES.map((mistake) => {
+                {availableMistakes.map((mistake) => {
                   const isSelected = selectedMistakes.includes(mistake);
                   return (
-                    <button
-                      key={mistake}
-                      type="button"
-                      onClick={() => handleToggleMistake(mistake)}
-                      className={`px-3 py-1.5 rounded-xl text-3xs font-bold border transition cursor-pointer ${
-                        isSelected
-                          ? mistake === 'None'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      {mistake}
-                    </button>
+                    <div key={mistake} className="inline-flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMistake(mistake)}
+                        className={`px-3 py-1.5 rounded-xl text-3xs font-bold border transition cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? mistake === 'None'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-3xs'
+                              : 'bg-rose-50 text-rose-700 border-rose-200 shadow-3xs'
+                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{mistake}</span>
+                      </button>
+                      {mistake !== 'None' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomMistake(mistake)}
+                          className="p-1 hover:bg-rose-50 text-slate-350 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                          title={`Delete "${mistake}" metric`}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1667,13 +1759,6 @@ export default function JournalView({
                                   <Clock size={11} className="animate-pulse" />
                                   Pending
                                 </button>
-                                <button
-                                  onClick={() => handleOpenJournalModal(trade)}
-                                  className="px-2 py-0.5 bg-purple-600 hover:bg-purple-700 text-white text-4xs font-bold rounded shadow-3xs transition cursor-pointer flex items-center gap-1"
-                                >
-                                  <CheckSquare size={10} />
-                                  Score Trade
-                                </button>
                               </div>
                               <div className="text-4xs text-slate-400 font-medium">Checklist not evaluated yet</div>
                             </div>
@@ -1683,18 +1768,12 @@ export default function JournalView({
                         <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end items-center gap-1">
                             <button
-                              onClick={() => handleOpenJournalModal(trade)}
-                              className="px-2 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/80 text-3xs font-bold rounded transition cursor-pointer flex items-center gap-1"
-                              title="Evaluate checklist rules & score trade"
-                            >
-                              <CheckSquare size={11} />
-                              <span>Score</span>
-                            </button>
-                            <button
                               onClick={() => handleStartEdit(trade)}
-                              className="px-2.5 py-1 hover:bg-slate-100 text-slate-600 text-3xs font-bold rounded transition cursor-pointer border border-slate-200"
+                              className="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/80 text-3xs font-bold rounded transition cursor-pointer flex items-center gap-1.5 shadow-3xs"
+                              title="Journal trade: Score rules & edit details"
                             >
-                              Edit
+                              <BookOpen size={11} />
+                              <span>Journal</span>
                             </button>
                             <button
                               onClick={() => onDeleteTrade(trade.id)}
@@ -1996,23 +2075,35 @@ export default function JournalView({
             <div className="space-y-2">
               <label className="text-2xs font-extrabold text-slate-600 uppercase tracking-wider block">Psychology / Mistakes</label>
               <div className="flex flex-wrap gap-1.5">
-                {AVAILABLE_MISTAKES.map(mistake => {
+                {availableMistakes.map(mistake => {
                   const isSelected = journalingMistakes.includes(mistake);
                   return (
-                    <button
-                      key={mistake}
-                      type="button"
-                      onClick={() => handleToggleJournalMistake(mistake)}
-                      className={`px-2.5 py-1 rounded-lg text-3xs font-bold border transition cursor-pointer ${
-                        isSelected
-                          ? mistake === 'None'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                          : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      {mistake}
-                    </button>
+                    <div key={mistake} className="inline-flex items-center gap-0.5">
+                      <button
+                        key={mistake}
+                        type="button"
+                        onClick={() => handleToggleJournalMistake(mistake)}
+                        className={`px-2.5 py-1 rounded-lg text-3xs font-bold border transition cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? mistake === 'None'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{mistake}</span>
+                      </button>
+                      {mistake !== 'None' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomMistake(mistake)}
+                          className="p-1 hover:bg-rose-50 text-slate-350 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                          title={`Delete "${mistake}" metric`}
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

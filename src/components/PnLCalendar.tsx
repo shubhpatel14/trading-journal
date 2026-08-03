@@ -247,7 +247,7 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
       </div>
 
       {/* Main Calendar Grid + Weekly columns */}
-      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-x-auto touch-scrolling custom-scrollbar">
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-visible">
         <div className="min-w-[640px] sm:min-w-0">
           {/* Calendar Grid Header */}
           <div className="grid grid-cols-8 border-b border-slate-100 bg-slate-50/50 text-center text-3xs font-bold text-slate-400 uppercase tracking-widest py-3">
@@ -270,13 +270,15 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
 
             // Determine if there are active trades logged in this week
             const hasTradesThisWeek = week.some(day => day.dateStr && getTradesForDay(day.dateStr).length > 0);
+            const isTopHalf = idx < Math.ceil(calendarWeeks.length / 2);
 
             return (
-              <div key={idx} className="grid grid-cols-8 min-h-[100px] divide-x divide-slate-100 overflow-visible">
+              <div key={idx} className="grid grid-cols-8 min-h-[100px] divide-x divide-slate-100 overflow-visible relative">
                 {week.map((day, dIdx) => {
                   const dayTrades = day.dateStr ? getTradesForDay(day.dateStr) : [];
                   const dayPnl = day.dateStr ? getDailyPnl(day.dateStr) : 0;
                   const isToday = day.dateStr === getLocalDateStr(new Date());
+                  const isHovered = hoveredDate === day.dateStr;
 
                   return (
                     <div
@@ -288,35 +290,39 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
                       }}
                       onMouseEnter={() => day.dateStr && setHoveredDate(day.dateStr)}
                       onMouseLeave={() => setHoveredDate(null)}
-                      className={`relative group p-2.5 flex flex-col justify-between transition-all duration-200 ease-out transform hover:scale-[1.03] hover:-translate-y-1 hover:z-50 hover:shadow-xl hover:shadow-blue-500/10 cursor-pointer border border-transparent hover:border-blue-300 rounded-xl ${
-                        day.isCurrentMonth ? 'bg-white hover:bg-gradient-to-b hover:from-white hover:to-blue-50/30' : 'bg-slate-50/30 text-slate-300'
+                      className={`relative p-2.5 flex flex-col justify-between transition-colors duration-150 cursor-pointer border border-transparent hover:border-blue-300 rounded-xl ${
+                        isHovered ? 'z-40 bg-blue-50/40' : day.isCurrentMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/30 text-slate-300'
                       } ${isToday ? 'ring-2 ring-blue-500/20 ring-inset bg-blue-50/10' : ''}`}
                     >
                       {/* Hover Pop-Up Animation Card */}
                       {day.dateStr && (
                         <div
-                          className={`opacity-0 scale-90 pointer-events-none group-hover:opacity-100 group-hover:scale-100 absolute z-50 w-76 p-3.5 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_20px_45px_-10px_rgba(15,23,42,0.16),0_0_0_1px_rgba(255,255,255,0.9)_inset] text-slate-800 font-sans text-left transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                            idx === 0
-                              ? 'top-full mt-2.5 translate-y-[-8px] group-hover:translate-y-0'
-                              : 'bottom-full mb-2.5 translate-y-[8px] group-hover:translate-y-0'
+                          onMouseEnter={() => setHoveredDate(day.dateStr)}
+                          onMouseLeave={() => setHoveredDate(null)}
+                          className={`transition-all duration-200 ease-out absolute z-50 w-80 p-3.5 rounded-2xl bg-white/98 backdrop-blur-xl border border-slate-200/90 shadow-2xl text-slate-800 font-sans text-left ${
+                            isHovered ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
                           } ${
-                            dIdx === 0
+                            isTopHalf
+                              ? 'top-full mt-2.5 translate-y-0'
+                              : 'bottom-full mb-2.5 translate-y-0'
+                          } ${
+                            dIdx <= 1
                               ? 'left-0 translate-x-0'
-                              : dIdx === 6
+                              : dIdx >= 5
                                 ? 'right-0 left-auto translate-x-0'
                                 : 'left-1/2 -translate-x-1/2'
                           }`}
                         >
                           {/* Arrow indicator */}
                           <div
-                            className={`absolute w-3 h-3 bg-white/95 backdrop-blur-xl rotate-45 ${
-                              idx === 0
+                            className={`absolute w-3 h-3 bg-white/98 backdrop-blur-xl rotate-45 border ${
+                              isTopHalf
                                 ? '-top-1.5 border-t border-l border-slate-200/90'
                                 : '-bottom-1.5 border-b border-r border-slate-200/90'
                             } ${
-                              dIdx === 0
+                              dIdx <= 1
                                 ? 'left-6'
-                                : dIdx === 6
+                                : dIdx >= 5
                                   ? 'right-6 left-auto'
                                   : 'left-1/2 -translate-x-1/2'
                             }`}
