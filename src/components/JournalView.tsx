@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import { Trade, TradingAccount, JournalRule, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
+import ScreenshotUploader from './ScreenshotUploader';
+
 
 interface JournalViewProps {
   trades: Trade[];
@@ -382,7 +384,7 @@ export default function JournalView({
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
     setFormChecklist(trade.checklist || {});
-    setFormJournalingStatus(trade.journalingStatus || 'COMPLETE');
+    setFormJournalingStatus('COMPLETE');
     setShowForm(true);
   };
 
@@ -506,8 +508,10 @@ export default function JournalView({
     const parsedSwap = parseFloat(swap) || 0;
     const parsedFee = parseFloat(fee) || 0;
 
+    const targetAccId = accountId || (selectedAccountId !== 'ALL' ? selectedAccountId : (accounts[0]?.id || 'acc-1'));
+
     const finalTrade = {
-      accountId,
+      accountId: targetAccId,
       date,
       time,
       asset: asset.toUpperCase().trim(),
@@ -531,7 +535,7 @@ export default function JournalView({
       checklist: formChecklist,
       checklistScore: isEvaluated ? checkedRulesCount : (existingTrade?.checklistScore ?? checkedRulesCount),
       maxChecklistScore: isEvaluated ? maxScore : (existingTrade?.maxChecklistScore ?? maxScore),
-      journalingStatus: formJournalingStatus
+      journalingStatus: formJournalingStatus || 'COMPLETE'
     };
 
     if (editingId) {
@@ -1107,30 +1111,33 @@ export default function JournalView({
             </div>
           </div>
 
-          {/* Screenshot Attachments URLs (HTF and LTF) */}
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-150 space-y-4">
-            <span className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">Log Execution Screenshots (HTF & LTF Charts)</span>
+          {/* Screenshot Attachments (HTF and LTF) with Drag & Drop, File Upload, Paste & Permanent Storage */}
+          <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Trade Execution Screenshots (Permanent IndexedDB Storage)
+              </span>
+              <div className="flex items-center gap-2 text-3xs text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                <Sparkles size={12} className="text-blue-600" />
+                <span>Supports Drag & Drop, File Upload & <strong>Ctrl + V Paste</strong></span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-4xs font-bold text-slate-500 uppercase block">High Timeframe Screenshot URL (HTF SS)</label>
-                <input
-                  type="url"
-                  placeholder="e.g. Daily/4HR structure screenshot link"
-                  value={htfScreenshot}
-                  onChange={(e) => setHtfScreenshot(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-650 focus:outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-4xs font-bold text-slate-500 uppercase block">Low Timeframe Screenshot URL (LTF SS)</label>
-                <input
-                  type="url"
-                  placeholder="e.g. 15m/5m entry wick confirmation link"
-                  value={ltfScreenshot}
-                  onChange={(e) => setLtfScreenshot(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-650 focus:outline-none"
-                />
-              </div>
+              <ScreenshotUploader
+                label="High Timeframe Screenshot (HTF)"
+                value={htfScreenshot}
+                onChange={setHtfScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="HTF Structure"
+              />
+              <ScreenshotUploader
+                label="Low Timeframe Screenshot (LTF)"
+                value={ltfScreenshot}
+                onChange={setLtfScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="LTF Entry Trigger"
+              />
             </div>
 
             <div className="flex items-center gap-2 flex-wrap text-3xs bg-white p-2 border rounded-lg">
@@ -1144,7 +1151,7 @@ export default function JournalView({
                   setHtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[0].url);
                   setLtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[1].url);
                 }}
-                className="px-2 py-0.5 border border-slate-200 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition font-bold"
+                className="px-2 py-0.5 border border-slate-200 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition font-bold cursor-pointer"
               >
                 Paste Mock HTF/LTF SS Links
               </button>
@@ -1369,7 +1376,7 @@ export default function JournalView({
                 type="submit"
                 className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition duration-150 cursor-pointer shadow-xs"
               >
-                {editingId ? 'Update Logged Trade' : 'Save Logged Trade'}
+                {editingId ? 'Update Journal Log' : 'Save Journal Log'}
               </button>
             </div>
           </div>
@@ -2288,6 +2295,42 @@ export default function JournalView({
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Lightbox Image Viewer Modal */}
+      {activeLightboxImg && (
+        <div
+          className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-8 animate-fadeIn"
+          onClick={() => setActiveLightboxImg(null)}
+        >
+          <div
+            className="relative max-w-5xl w-full max-h-[90vh] bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl flex flex-col items-center justify-center p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+              <a
+                href={activeLightboxImg}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 bg-slate-800/80 hover:bg-slate-800 text-white rounded-xl backdrop-blur-md transition flex items-center gap-1 text-xs font-bold px-3"
+              >
+                Open Original
+              </a>
+              <button
+                type="button"
+                onClick={() => setActiveLightboxImg(null)}
+                className="p-2 bg-slate-800/80 hover:bg-rose-600 text-white rounded-xl backdrop-blur-md transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <img
+              src={activeLightboxImg}
+              alt="Screenshot Lightbox"
+              className="w-full h-auto max-h-[85vh] object-contain rounded-xl"
+            />
           </div>
         </div>
       )}

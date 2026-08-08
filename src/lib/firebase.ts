@@ -19,7 +19,8 @@ import {
   collection, 
   getDocs, 
   deleteDoc, 
-  writeBatch 
+  writeBatch,
+  onSnapshot
 } from "firebase/firestore";
 
 const getEnvValue = (val: any, fallback: string): string => {
@@ -110,7 +111,8 @@ export {
   collection,
   getDocs,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  onSnapshot
 };
 export type { User };
 

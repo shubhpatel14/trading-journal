@@ -48,8 +48,10 @@ import {
   getDocs,
   deleteDoc,
   writeBatch,
-  cleanForFirestore
+  cleanForFirestore,
+  onSnapshot
 } from './lib/firebase';
+import { getAllIDB, saveAllIDB, saveIDB, deleteIDB, STORES } from './lib/indexedDB';
 
 // Import core sub-components
 import Dashboard from './components/Dashboard';
@@ -170,14 +172,16 @@ export default function App() {
 
   // Trades State
   const [trades, setTrades] = useState<Trade[]>(() => {
-    const isReal = isRealAccountSession();
-    const saved = isReal ? localStorage.getItem('TRADEPLAN_TRADES') : sessionStorage.getItem('TRADEPLAN_GUEST_TRADES');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return INITIAL_TRADES;
+    const isGuest = sessionStorage.getItem('TRADEPLAN_IS_GUEST') === 'true';
+    if (isGuest) {
+      const savedGuest = sessionStorage.getItem('TRADEPLAN_GUEST_TRADES');
+      if (savedGuest) {
+        try { return JSON.parse(savedGuest); } catch (e) {}
       }
+    }
+    const savedLocal = localStorage.getItem('TRADEPLAN_TRADES');
+    if (savedLocal) {
+      try { return JSON.parse(savedLocal); } catch (e) {}
     }
     return INITIAL_TRADES;
   });
@@ -239,24 +243,56 @@ export default function App() {
     return DEFAULT_JOURNAL_RULES;
   });
 
-  const handleAddJournalRule = (rule: Omit<JournalRule, 'id'>) => {
+  const handleAddJournalRule = async (rule: Omit<JournalRule, 'id'>) => {
     const newRule: JournalRule = {
       ...rule,
       id: `rule-${Date.now()}`
     };
     setJournalRules(prev => [...prev, newRule]);
+    if (user && db && !isDemoUser) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'rules', newRule.id), cleanForFirestore(newRule));
+      } catch (e) {}
+    }
   };
 
-  const handleEditJournalRule = (id: string, updated: Partial<JournalRule>) => {
-    setJournalRules(prev => prev.map(r => r.id === id ? { ...r, ...updated } : r));
+  const handleEditJournalRule = async (id: string, updated: Partial<JournalRule>) => {
+    let updatedRule: JournalRule | undefined;
+    setJournalRules(prev => prev.map(r => {
+      if (r.id === id) {
+        const merged = { ...r, ...updated };
+        updatedRule = merged;
+        return merged;
+      }
+      return r;
+    }));
+    if (user && db && !isDemoUser && updatedRule) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'rules', id), cleanForFirestore(updatedRule), { merge: true });
+      } catch (e) {}
+    }
   };
 
-  const handleDeleteJournalRule = (id: string) => {
+  const handleDeleteJournalRule = async (id: string) => {
     setJournalRules(prev => prev.filter(r => r.id !== id));
+    if (user && db && !isDemoUser) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'rules', id));
+      } catch (e) {}
+    }
   };
 
-  const handleResetJournalRules = () => {
+  const handleResetJournalRules = async () => {
     setJournalRules(DEFAULT_JOURNAL_RULES);
+    if (user && db && !isDemoUser) {
+      try {
+        const batch = writeBatch(db);
+        DEFAULT_JOURNAL_RULES.forEach(r => {
+          batch.set(doc(db, 'users', user.uid, 'rules', r.id), cleanForFirestore(r));
+        });
+        await batch.commit();
+      } catch (e) {}
+    }
   };
 
   const handleAddDailyReview = async (newReview: Omit<DailyReview, 'id' | 'createdAt'>) => {
@@ -332,8 +368,53 @@ export default function App() {
   // Prefilled state for executing plans
   const [prefillTrade, setPrefillTrade] = useState<Partial<Trade> | null>(null);
 
-  // Synchronize Accounts (sessionStorage for Guest Mode, localStorage for Real Accounts)
+  // Permanent IndexedDB Initialization Effect on Mount
   useEffect(() => {
+    async function loadFromIndexedDB() {
+      try {
+        const [idbTrades, idbPlans, idbAccounts, idbDaily, idbWeekly, idbRules] = await Promise.all([
+          getAllIDB<Trade>(STORES.TRADES),
+          getAllIDB<TradePlan>(STORES.PLANS),
+          getAllIDB<TradingAccount>(STORES.ACCOUNTS),
+          getAllIDB<DailyReview>(STORES.DAILY_REVIEWS),
+          getAllIDB<WeeklyReview>(STORES.WEEKLY_REVIEWS),
+          getAllIDB<JournalRule>(STORES.JOURNAL_RULES),
+        ]);
+
+        if (idbTrades.length > 0) {
+          setTrades(idbTrades);
+        } else if (INITIAL_TRADES.length > 0) {
+          await saveAllIDB(STORES.TRADES, INITIAL_TRADES);
+          setTrades(INITIAL_TRADES);
+        }
+
+        if (idbPlans.length > 0) {
+          setPlans(idbPlans);
+        } else if (INITIAL_TRADE_PLANS.length > 0) {
+          await saveAllIDB(STORES.PLANS, INITIAL_TRADE_PLANS);
+          setPlans(INITIAL_TRADE_PLANS);
+        }
+
+        if (idbAccounts.length > 0) {
+          setAccounts(idbAccounts);
+        } else if (INITIAL_ACCOUNTS.length > 0) {
+          await saveAllIDB(STORES.ACCOUNTS, INITIAL_ACCOUNTS);
+          setAccounts(INITIAL_ACCOUNTS);
+        }
+
+        if (idbDaily.length > 0) setDailyReviews(idbDaily);
+        if (idbWeekly.length > 0) setWeeklyReviews(idbWeekly);
+        if (idbRules.length > 0) setJournalRules(idbRules);
+      } catch (err) {
+        console.error("Failed to initialize state from IndexedDB:", err);
+      }
+    }
+    loadFromIndexedDB();
+  }, []);
+
+  // Synchronize Accounts (IndexedDB + localStorage/sessionStorage)
+  useEffect(() => {
+    saveAllIDB(STORES.ACCOUNTS, accounts);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_ACCOUNTS', JSON.stringify(accounts));
     } else {
@@ -350,17 +431,36 @@ export default function App() {
     }
   }, [selectedAccountId, isDemoUser]);
 
-  // Synchronize Trades
+  // Synchronize Trades (IndexedDB + localStorage + Express API backup)
+  const prevTradesStringRef = React.useRef<string>('');
   useEffect(() => {
+    saveAllIDB(STORES.TRADES, trades);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_TRADES', JSON.stringify(trades));
-    } else {
-      localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
     }
+    try {
+      localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(trades));
+    } catch (e) {
+      console.warn("LocalStorage full, trades saved permanently in IndexedDB");
+    }
+
+    const currentStr = JSON.stringify(trades);
+    if (prevTradesStringRef.current === currentStr) {
+      return;
+    }
+    prevTradesStringRef.current = currentStr;
+
+    // Server-side json backup sync
+    fetch('/api/trades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trades })
+    }).catch(() => {});
   }, [trades, isDemoUser]);
 
   // Synchronize Plans
   useEffect(() => {
+    saveAllIDB(STORES.PLANS, plans);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_PLANS', JSON.stringify(plans));
     } else {
@@ -370,6 +470,7 @@ export default function App() {
 
   // Synchronize Daily Reviews
   useEffect(() => {
+    saveAllIDB(STORES.DAILY_REVIEWS, dailyReviews);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_DAILY_REVIEWS', JSON.stringify(dailyReviews));
     } else {
@@ -379,6 +480,7 @@ export default function App() {
 
   // Synchronize Weekly Reviews
   useEffect(() => {
+    saveAllIDB(STORES.WEEKLY_REVIEWS, weeklyReviews);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_WEEKLY_REVIEWS', JSON.stringify(weeklyReviews));
     } else {
@@ -388,12 +490,14 @@ export default function App() {
 
   // Synchronize Journal Rules
   useEffect(() => {
+    saveAllIDB(STORES.JOURNAL_RULES, journalRules);
     if (isDemoUser) {
       sessionStorage.setItem('TRADEPLAN_GUEST_JOURNAL_RULES', JSON.stringify(journalRules));
     } else {
       localStorage.setItem('TRADEPLAN_JOURNAL_RULES', JSON.stringify(journalRules));
     }
   }, [journalRules, isDemoUser]);
+
 
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
@@ -460,18 +564,61 @@ export default function App() {
         needsBatchCommit = true;
       }
 
-      if (normalizedLoadedTrades.length > 0) {
-        setTrades(normalizedLoadedTrades);
-      } else if (trades.length > 0) {
-        const cleanedLocalTrades = trades.map(t => ({
-          ...t,
-          journalingStatus: t.journalingStatus || 'PENDING'
-        }));
-        setTrades(cleanedLocalTrades);
-        cleanedLocalTrades.forEach(t => {
-          batch.set(doc(db, 'users', userId, 'trades', t.id), cleanForFirestore(t));
-        });
-        needsBatchCommit = true;
+      // Smart trades merge: merge Firestore trades with IndexedDB & LocalStorage trades
+      let localTrades: Trade[] = await getAllIDB<Trade>(STORES.TRADES);
+      if (localTrades.length === 0) {
+        const savedLocalStr = localStorage.getItem('TRADEPLAN_TRADES');
+        if (savedLocalStr) {
+          try { localTrades = JSON.parse(savedLocalStr); } catch (e) {}
+        }
+      }
+      if (localTrades.length === 0 && trades.length > 0) {
+        localTrades = trades;
+      }
+
+      const tradeMap = new Map<string, Trade>();
+      normalizedLoadedTrades.forEach(t => {
+        tradeMap.set(t.id, t);
+      });
+
+      localTrades.forEach(localT => {
+        const remoteT = tradeMap.get(localT.id);
+        if (!remoteT) {
+          tradeMap.set(localT.id, localT);
+          batch.set(doc(db, 'users', userId, 'trades', localT.id), cleanForFirestore(localT));
+          needsBatchCommit = true;
+        } else {
+          // Preserve local trade if it has screenshots or notes that remote trade lacks
+          const localHasScreenshots = localT.htfScreenshot || localT.ltfScreenshot;
+          const remoteHasScreenshots = remoteT.htfScreenshot || remoteT.ltfScreenshot;
+          const localIsComplete = localT.journalingStatus === 'COMPLETE' || (localT.checklistScore !== undefined && localT.checklistScore > 0);
+          const remoteIsComplete = remoteT.journalingStatus === 'COMPLETE' || (remoteT.checklistScore !== undefined && remoteT.checklistScore > 0);
+
+          const merged: Trade = {
+            ...remoteT,
+            ...localT,
+            htfScreenshot: localT.htfScreenshot || remoteT.htfScreenshot || '',
+            ltfScreenshot: localT.ltfScreenshot || remoteT.ltfScreenshot || '',
+            notes: localT.notes || remoteT.notes || '',
+            mistakes: localT.mistakes && localT.mistakes.length > 0 && !localT.mistakes.includes('None') ? localT.mistakes : remoteT.mistakes,
+            journalingStatus: localIsComplete ? 'COMPLETE' : remoteIsComplete ? 'COMPLETE' : (remoteT.journalingStatus || 'PENDING')
+          };
+
+          tradeMap.set(localT.id, merged);
+          if (localHasScreenshots && !remoteHasScreenshots) {
+            batch.set(doc(db, 'users', userId, 'trades', localT.id), cleanForFirestore(merged));
+            needsBatchCommit = true;
+          }
+        }
+      });
+
+      const finalMergedTrades = Array.from(tradeMap.values());
+      if (finalMergedTrades.length > 0) {
+        setTrades(finalMergedTrades);
+        await saveAllIDB(STORES.TRADES, finalMergedTrades);
+        try {
+          localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(finalMergedTrades));
+        } catch (e) {}
       }
 
       if (loadedPlans.length > 0) {
@@ -557,6 +704,73 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Real-time Firestore Sync Listener across devices & tabs
+  useEffect(() => {
+    if (!user || !user.uid || !db || isDemoUser || !isFirebaseConfigured) return;
+
+    const userId = user.uid;
+
+    // Real-time listener for Trades
+    const unsubTrades = onSnapshot(collection(db, 'users', userId, 'trades'), (snap) => {
+      const remoteTrades: Trade[] = [];
+      snap.forEach(docSnap => {
+        const data = docSnap.data() as Trade;
+        remoteTrades.push({
+          ...data,
+          id: docSnap.id,
+          journalingStatus: data.journalingStatus || (data.checklistScore !== undefined && data.checklistScore > 0 ? 'COMPLETE' : 'PENDING')
+        });
+      });
+      if (remoteTrades.length > 0) {
+        setTrades(remoteTrades);
+        saveAllIDB(STORES.TRADES, remoteTrades);
+      }
+    }, (err) => console.warn("Realtime trades listener:", err.message));
+
+    // Real-time listener for Accounts
+    const unsubAccounts = onSnapshot(collection(db, 'users', userId, 'accounts'), (snap) => {
+      const remoteAccs: TradingAccount[] = [];
+      snap.forEach(docSnap => {
+        remoteAccs.push({ ...docSnap.data(), id: docSnap.id } as TradingAccount);
+      });
+      if (remoteAccs.length > 0) {
+        setAccounts(remoteAccs);
+        saveAllIDB(STORES.ACCOUNTS, remoteAccs);
+      }
+    }, (err) => console.warn("Realtime accounts listener:", err.message));
+
+    // Real-time listener for Plans
+    const unsubPlans = onSnapshot(collection(db, 'users', userId, 'plans'), (snap) => {
+      const remotePlans: TradePlan[] = [];
+      snap.forEach(docSnap => {
+        remotePlans.push({ ...docSnap.data(), id: docSnap.id } as TradePlan);
+      });
+      if (remotePlans.length > 0) {
+        setPlans(remotePlans);
+        saveAllIDB(STORES.PLANS, remotePlans);
+      }
+    }, (err) => console.warn("Realtime plans listener:", err.message));
+
+    // Real-time listener for Rules
+    const unsubRules = onSnapshot(collection(db, 'users', userId, 'rules'), (snap) => {
+      const remoteRules: JournalRule[] = [];
+      snap.forEach(docSnap => {
+        remoteRules.push({ ...docSnap.data(), id: docSnap.id } as JournalRule);
+      });
+      if (remoteRules.length > 0) {
+        setJournalRules(remoteRules);
+        saveAllIDB(STORES.JOURNAL_RULES, remoteRules);
+      }
+    }, (err) => console.warn("Realtime rules listener:", err.message));
+
+    return () => {
+      unsubTrades();
+      unsubAccounts();
+      unsubPlans();
+      unsubRules();
+    };
+  }, [user?.uid, isDemoUser]);
+
   // Sync operations handlers
   const handleEmailPasswordAuthWithParams = async (
     mode: 'signin' | 'signup',
@@ -609,7 +823,7 @@ export default function App() {
       localStorage.setItem('TRADEPLAN_MOCK_USER', JSON.stringify(mockUser));
       localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
       setUser(mockUser);
-      setIsDemoUser(true);
+      setIsDemoUser(false);
       setAuthSubmitting(false);
       setShowAuthModal(false);
     }
@@ -694,9 +908,21 @@ export default function App() {
     const trade: Trade = {
       ...newTrade,
       id: `trade-${Date.now()}`,
-      journalingStatus: newTrade.journalingStatus || 'PENDING'
+      accountId: newTrade.accountId || (selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id || 'acc-1'),
+      journalingStatus: newTrade.journalingStatus || 'COMPLETE'
     };
-    setTrades(prev => [trade, ...prev]);
+
+    await saveIDB(STORES.TRADES, trade);
+
+    setTrades(prev => {
+      const next = [trade, ...prev];
+      if (isDemoUser) {
+        sessionStorage.setItem('TRADEPLAN_GUEST_TRADES', JSON.stringify(next));
+      } else {
+        try { localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(next)); } catch (e) {}
+      }
+      return next;
+    });
 
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
@@ -711,22 +937,50 @@ export default function App() {
   };
 
   const handleEditTrade = async (id: string, updatedFields: Partial<Trade>) => {
+    let updatedTrade: Trade | undefined;
     setTrades(prev => {
-      const updated = prev.map(t => t.id === id ? { ...t, ...updatedFields } : t);
-      const updatedTrade = updated.find(t => t.id === id);
-
-      if (user && db && !isDemoUser && updatedTrade) {
-        setDoc(doc(db, 'users', user.uid, 'trades', id), cleanForFirestore(updatedTrade)).catch(e => {
-          handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/trades/${id}`);
-        });
+      const next = prev.map(t => {
+        if (t.id === id) {
+          const merged = { ...t, ...updatedFields };
+          updatedTrade = merged;
+          return merged;
+        }
+        return t;
+      });
+      if (isDemoUser) {
+        sessionStorage.setItem('TRADEPLAN_GUEST_TRADES', JSON.stringify(next));
+      } else {
+        try { localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(next)); } catch (e) {}
       }
-      return updated;
+      return next;
     });
+
+    if (updatedTrade) {
+      await saveIDB(STORES.TRADES, updatedTrade);
+    }
+
+    if (user && db && !isDemoUser && updatedTrade) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'trades', id), cleanForFirestore(updatedTrade));
+      } catch (e) {
+        handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/trades/${id}`);
+      }
+    }
   };
 
   const handleDeleteTrade = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this trade from your journal?')) {
-      setTrades(prev => prev.filter(t => t.id !== id));
+      await deleteIDB(STORES.TRADES, id);
+
+      setTrades(prev => {
+        const next = prev.filter(t => t.id !== id);
+        if (isDemoUser) {
+          sessionStorage.setItem('TRADEPLAN_GUEST_TRADES', JSON.stringify(next));
+        } else {
+          try { localStorage.setItem('TRADEPLAN_TRADES', JSON.stringify(next)); } catch (e) {}
+        }
+        return next;
+      });
 
       if (user && db && !isDemoUser) {
         setIsCloudSyncing(true);

@@ -11,7 +11,32 @@ export const DEFAULT_JOURNAL_RULES: JournalRule[] = [
   { id: 'rule-8', label: 'Distance to Target', description: 'Sufficient R:R distance to major target/liquidity pool' },
 ];
 
-export const INITIAL_ACCOUNTS: TradingAccount[] = [];
+export const INITIAL_ACCOUNTS: TradingAccount[] = [
+  {
+    id: 'acc-1',
+    name: 'Personal FTMO ($100k)',
+    broker: 'FTMO / Eightcap',
+    initialBalance: 100000,
+    currency: 'USD',
+    commissionPerLot: 7.00
+  },
+  {
+    id: 'acc-2',
+    name: 'Prop Evaluation ($200k)',
+    broker: 'Funding Pips',
+    initialBalance: 200000,
+    currency: 'USD',
+    commissionPerLot: 7.00
+  },
+  {
+    id: 'acc-3',
+    name: 'Crypto Spot Trading',
+    broker: 'Binance / Bybit',
+    initialBalance: 25000,
+    currency: 'USDT',
+    commissionPerLot: 0.00
+  }
+];
 
 export const INITIAL_TRADE_PLANS: TradePlan[] = [
   {

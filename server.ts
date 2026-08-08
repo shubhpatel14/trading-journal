@@ -3,6 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -19,8 +20,77 @@ const ai = new GoogleGenAI({
 async function startServer() {
   const app = express();
   
-const PORT = Number(process.env.PORT) || 3000;
-  app.use(express.json());
+  const PORT = Number(process.env.PORT) || 3000;
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+  // Ensure assets/uploads directory exists
+  const uploadsDir = path.join(process.cwd(), 'assets', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  // Serve uploads directory
+  app.use('/assets/uploads', express.static(uploadsDir));
+
+  // Endpoint to handle screenshot uploads
+  app.post('/api/upload', (req, res) => {
+    try {
+      const { image, name } = req.body;
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ error: 'No image data provided' });
+      }
+
+      // Extract base64 format and data
+      const matches = image.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).json({ error: 'Invalid base64 image data' });
+      }
+
+      const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+      const base64Data = matches[2];
+      const buffer = Buffer.from(base64Data, 'base64');
+
+      const filename = `${name || 'ss'}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+      const filePath = path.join(uploadsDir, filename);
+
+      fs.writeFileSync(filePath, buffer);
+
+      const publicUrl = `/assets/uploads/${filename}`;
+      return res.json({ url: publicUrl, filename });
+    } catch (err: any) {
+      console.error('Image Upload Error:', err);
+      return res.status(500).json({ error: err.message || 'Failed to save screenshot' });
+    }
+  });
+
+  // Local JSON Backup Endpoint for Trades
+  const tradesBackupPath = path.join(process.cwd(), 'trades_backup.json');
+
+  app.get('/api/trades', (req, res) => {
+    try {
+      if (fs.existsSync(tradesBackupPath)) {
+        const raw = fs.readFileSync(tradesBackupPath, 'utf-8');
+        return res.json(JSON.parse(raw));
+      }
+      return res.json([]);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/trades', (req, res) => {
+    try {
+      const { trades } = req.body;
+      if (Array.isArray(trades)) {
+        fs.writeFileSync(tradesBackupPath, JSON.stringify(trades, null, 2), 'utf-8');
+        return res.json({ success: true, count: trades.length });
+      }
+      return res.status(400).json({ error: 'Invalid trades payload' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
 
   // API endpoint to analyze trading patterns using Gemini 3.5-flash
   app.post('/api/ai/analyze', async (req, res) => {
