@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Trade, TradePlan, PerformanceMetrics, getTradeNetPnl, getTradeTotalFees } from '../types';
 
+import ForgeScoreCard from './ForgeScoreCard';
+
 interface DashboardProps {
   trades: Trade[];
   plans: TradePlan[];
@@ -220,33 +222,41 @@ export default function Dashboard({
 
   return (
     <div className="space-y-10" id="dashboard-tab">
-      <section className="clay-surface relative overflow-hidden p-6 sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#DB2777]/20 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 right-10 hidden h-28 w-28 rounded-full bg-[#0EA5E9]/20 blur-2xl sm:block" />
-        <div className="relative max-w-4xl space-y-5">
-          <span className="clay-pill bg-white/80 text-clay-accent">
-            <Sparkles size={14} className="fill-clay-accent stroke-[3px]" />
-            Live Command Board
-          </span>
-          <div className="space-y-3">
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.05] tracking-tight text-clay-foreground">
-              Active Execution Workspace
-            </h1>
-            <p className="max-w-2xl text-base sm:text-lg font-medium leading-relaxed text-clay-muted">
-              Plan the session, log clean executions, and keep your trade data feeling calm, tactile, and easy to scan.
-            </p>
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-stretch">
+        {/* Active Execution Workspace Block */}
+        <article className="clay-surface relative overflow-hidden p-6 sm:p-8 lg:col-span-7 xl:col-span-8 flex flex-col justify-between">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#DB2777]/20 blur-3xl" />
+          <div className="pointer-events-none absolute bottom-0 right-10 hidden h-28 w-28 rounded-full bg-[#0EA5E9]/20 blur-2xl sm:block" />
+          <div className="relative space-y-5">
+            <span className="clay-pill bg-white/80 text-clay-accent">
+              <Sparkles size={14} className="fill-clay-accent stroke-[3px]" />
+              Live Command Board
+            </span>
+            <div className="space-y-3">
+              <h1 className="font-display text-4xl sm:text-5xl font-black leading-[1.05] tracking-tight text-clay-foreground">
+                Active Execution Workspace
+              </h1>
+              <p className="max-w-xl text-base sm:text-lg font-medium leading-relaxed text-clay-muted">
+                Plan the session, log clean executions, and keep your trade data feeling calm, tactile, and easy to scan.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row pt-2">
+              <button id="btn-nav-journal" onClick={() => onNavigate('plans')} className="clay-button clay-button-secondary px-5 py-2 text-sm">
+                Manage Setup Plans
+                <ArrowRight size={16} className="stroke-[3px]" />
+              </button>
+              <button id="btn-log-trade-banner" onClick={onOpenNewTrade} className="clay-button clay-button-primary px-5 py-2 text-sm">
+                <PlusCircle size={17} className="stroke-[3px]" />
+                Log Executed Trade
+              </button>
+            </div>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button id="btn-nav-journal" onClick={() => onNavigate('plans')} className="clay-button clay-button-secondary px-5 py-2 text-sm">
-              Manage Setup Plans
-              <ArrowRight size={16} className="stroke-[3px]" />
-            </button>
-            <button id="btn-log-trade-banner" onClick={onOpenNewTrade} className="clay-button clay-button-primary px-5 py-2 text-sm">
-              <PlusCircle size={17} className="stroke-[3px]" />
-              Log Executed Trade
-            </button>
-          </div>
-        </div>
+        </article>
+
+        {/* Separate Forge Score Block */}
+        <article className="lg:col-span-5 xl:col-span-4">
+          <ForgeScoreCard trades={trades} metrics={metrics} />
+        </article>
       </section>
 
       <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
