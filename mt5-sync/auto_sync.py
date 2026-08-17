@@ -229,7 +229,18 @@ def run_sync():
 
         trade_date = close_dt.strftime("%Y-%m-%d")
 
-        # Maintain exact trade dictionary structure
+        journal_defaults = {
+            "setup": "MT5 Import",
+            "session": "",
+            "notes": "",
+            "journalingStatus": "PENDING",
+            "mistakes": [],
+            "htfScreenshot": "",
+            "ltfScreenshot": "",
+        }
+
+        # MT5-owned execution fields. User-owned journal fields are only written
+        # when the trade is first created so auto-sync cannot erase notes/images.
         trade = {
             "id": str(pos_id),
             "accountId": ACCOUNT_ID,
@@ -254,23 +265,21 @@ def run_sync():
             "time": open_dt.strftime("%H:%M"),
             "openTime": open_dt.strftime("%Y-%m-%d %H:%M:%S"),
             "closeTime": close_dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "setup": "MT5 Import",
-            "session": "",
-            "notes": "",
-            "journalingStatus": "PENDING",
-            "mistakes": [],
-            "htfScreenshot": "",
-            "ltfScreenshot": "",
             "source": "MT5 Auto-Sync",
         }
 
         # Requirement 4: Upsert into Firebase using positionId as document key
-        # merge=True updates existing document without creating duplicates or clearing custom fields
-        db.collection("users") \
+        # merge=True updates execution fields without creating duplicates.
+        trade_ref = db.collection("users") \
           .document(USER_UID) \
           .collection("trades") \
-          .document(str(pos_id)) \
-          .set(trade, merge=True)
+          .document(str(pos_id))
+
+        payload = dict(trade)
+        if not trade_ref.get().exists:
+            payload.update(journal_defaults)
+
+        trade_ref.set(payload, merge=True)
 
         uploaded_count += 1
 

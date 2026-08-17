@@ -116,6 +116,18 @@ for position_id, position_deals in positions.items():
     trade_date = close_dt.strftime("%Y-%m-%d")
     trade_month = close_dt.strftime("%Y-%m")
 
+    journal_defaults = {
+        "setup": "MT5 Import",
+        "session": "",
+        "notes": "",
+        "journalingStatus": "PENDING",
+        "mistakes": [],
+        "htfScreenshot": "",
+        "ltfScreenshot": "",
+    }
+
+    # MT5-owned execution fields. User-owned journal fields are only written
+    # when the trade is first created so re-imports cannot erase notes/images.
     trade = {
         "id": str(position_id),
         "accountId": ACCOUNT_ID,
@@ -136,21 +148,19 @@ for position_id, position_deals in positions.items():
         "time": open_dt.strftime("%H:%M"),
         "openTime": open_dt.strftime("%Y-%m-%d %H:%M:%S"),
         "closeTime": close_dt.strftime("%Y-%m-%d %H:%M:%S"),
-        "setup": "MT5 Import",
-        "session": "",
-        "notes": "",
-        "journalingStatus": "PENDING",
-        "mistakes": [],
-        "htfScreenshot": "",
-        "ltfScreenshot": "",
         "source": "MT5"
     }
 
-    db.collection("users") \
+    trade_ref = db.collection("users") \
       .document(USER_UID) \
       .collection("trades") \
-      .document(str(position_id)) \
-      .set(trade)
+      .document(str(position_id))
+
+    payload = dict(trade)
+    if not trade_ref.get().exists:
+        payload.update(journal_defaults)
+
+    trade_ref.set(payload, merge=True)
 
     uploaded += 1
     uploaded_by_month[trade_month] += 1

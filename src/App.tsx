@@ -119,6 +119,67 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+const isNonEmptyText = (value?: string) => typeof value === 'string' && value.trim().length > 0;
+
+const hasMeaningfulMistakes = (mistakes?: string[]) => (
+  Array.isArray(mistakes) && mistakes.some(m => m && m !== 'None')
+);
+
+const isTradeJournalComplete = (trade: Partial<Trade>) => (
+  trade.journalingStatus === 'COMPLETE' ||
+  (trade.checklistScore !== undefined && trade.checklistScore > 0)
+);
+
+const normalizeFirestoreTrade = (trade: Trade): Trade => ({
+  ...trade,
+  notes: trade.notes || '',
+  mistakes: Array.isArray(trade.mistakes) ? trade.mistakes : [],
+  htfScreenshot: trade.htfScreenshot || '',
+  ltfScreenshot: trade.ltfScreenshot || '',
+  journalingStatus: trade.journalingStatus || (isTradeJournalComplete(trade) ? 'COMPLETE' : 'PENDING')
+});
+
+const mergeRemoteTradeWithLocalJournal = (remoteTrade: Trade, localTrade: Trade): { trade: Trade; shouldWriteBack: boolean } => {
+  const merged: Trade = { ...remoteTrade };
+  let shouldWriteBack = false;
+
+  if (isNonEmptyText(localTrade.notes) && !isNonEmptyText(remoteTrade.notes)) {
+    merged.notes = localTrade.notes;
+    shouldWriteBack = true;
+  }
+
+  if (isNonEmptyText(localTrade.htfScreenshot) && !isNonEmptyText(remoteTrade.htfScreenshot)) {
+    merged.htfScreenshot = localTrade.htfScreenshot;
+    shouldWriteBack = true;
+  }
+
+  if (isNonEmptyText(localTrade.ltfScreenshot) && !isNonEmptyText(remoteTrade.ltfScreenshot)) {
+    merged.ltfScreenshot = localTrade.ltfScreenshot;
+    shouldWriteBack = true;
+  }
+
+  if (hasMeaningfulMistakes(localTrade.mistakes) && !hasMeaningfulMistakes(remoteTrade.mistakes)) {
+    merged.mistakes = localTrade.mistakes;
+    shouldWriteBack = true;
+  }
+
+  const localHasChecklist = localTrade.checklist && Object.keys(localTrade.checklist).length > 0;
+  const remoteHasChecklist = remoteTrade.checklist && Object.keys(remoteTrade.checklist).length > 0;
+  if (localHasChecklist && !remoteHasChecklist) {
+    merged.checklist = localTrade.checklist;
+    merged.checklistScore = localTrade.checklistScore;
+    merged.maxChecklistScore = localTrade.maxChecklistScore;
+    shouldWriteBack = true;
+  }
+
+  if (isTradeJournalComplete(localTrade) && !isTradeJournalComplete(remoteTrade)) {
+    merged.journalingStatus = 'COMPLETE';
+    shouldWriteBack = true;
+  }
+
+  return { trade: normalizeFirestoreTrade(merged), shouldWriteBack };
+};
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [selectedJournalDate, setSelectedJournalDate] = useState<string | null>(null);
@@ -546,10 +607,7 @@ export default function App() {
       });
 
       // Normalize trades loaded from Firestore (default status to PENDING unless checklist evaluated)
-      const normalizedLoadedTrades = loadedTrades.map(t => ({
-        ...t,
-        journalingStatus: t.journalingStatus || (t.checklistScore !== undefined && t.checklistScore > 0 ? 'COMPLETE' : 'PENDING')
-      }));
+      const normalizedLoadedTrades = loadedTrades.map(normalizeFirestoreTrade);
 
       const batch = writeBatch(db);
       let needsBatchCommit = false;
@@ -588,24 +646,10 @@ export default function App() {
           batch.set(doc(db, 'users', userId, 'trades', localT.id), cleanForFirestore(localT));
           needsBatchCommit = true;
         } else {
-          // Preserve local trade if it has screenshots or notes that remote trade lacks
-          const localHasScreenshots = localT.htfScreenshot || localT.ltfScreenshot;
-          const remoteHasScreenshots = remoteT.htfScreenshot || remoteT.ltfScreenshot;
-          const localIsComplete = localT.journalingStatus === 'COMPLETE' || (localT.checklistScore !== undefined && localT.checklistScore > 0);
-          const remoteIsComplete = remoteT.journalingStatus === 'COMPLETE' || (remoteT.checklistScore !== undefined && remoteT.checklistScore > 0);
-
-          const merged: Trade = {
-            ...remoteT,
-            ...localT,
-            htfScreenshot: localT.htfScreenshot || remoteT.htfScreenshot || '',
-            ltfScreenshot: localT.ltfScreenshot || remoteT.ltfScreenshot || '',
-            notes: localT.notes || remoteT.notes || '',
-            mistakes: localT.mistakes && localT.mistakes.length > 0 && !localT.mistakes.includes('None') ? localT.mistakes : remoteT.mistakes,
-            journalingStatus: localIsComplete ? 'COMPLETE' : remoteIsComplete ? 'COMPLETE' : (remoteT.journalingStatus || 'PENDING')
-          };
+          const { trade: merged, shouldWriteBack } = mergeRemoteTradeWithLocalJournal(remoteT, localT);
 
           tradeMap.set(localT.id, merged);
-          if (localHasScreenshots && !remoteHasScreenshots) {
+          if (shouldWriteBack) {
             batch.set(doc(db, 'users', userId, 'trades', localT.id), cleanForFirestore(merged));
             needsBatchCommit = true;
           }
@@ -715,11 +759,10 @@ export default function App() {
       const remoteTrades: Trade[] = [];
       snap.forEach(docSnap => {
         const data = docSnap.data() as Trade;
-        remoteTrades.push({
+        remoteTrades.push(normalizeFirestoreTrade({
           ...data,
-          id: docSnap.id,
-          journalingStatus: data.journalingStatus || (data.checklistScore !== undefined && data.checklistScore > 0 ? 'COMPLETE' : 'PENDING')
-        });
+          id: docSnap.id
+        }));
       });
       if (remoteTrades.length > 0) {
         setTrades(remoteTrades);
