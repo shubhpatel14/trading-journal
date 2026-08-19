@@ -24,10 +24,11 @@ import {
   Loader2,
   ClipboardCheck,
   Coins,
-  Heart
+  Heart,
+  Brain
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl } from './types';
-import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES } from './mockData';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation } from './types';
+import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_DISCIPLINE_SETTINGS, INITIAL_DISCIPLINE_RECORDS, INITIAL_DISCIPLINE_VIOLATIONS } from './mockData';
 
 // Import Firebase config & helpers
 import {
@@ -64,6 +65,7 @@ const JournalView = React.lazy(() => import('./components/JournalView'));
 const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
 const ReviewView = React.lazy(() => import('./components/ReviewView'));
+const DisciplineCoachView = React.lazy(() => import('./components/DisciplineCoachView'));
 
 const ViewLoadingFallback = () => (
   <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
@@ -288,6 +290,56 @@ export default function App() {
     }
     return [];
   });
+
+  // Discipline Coach States
+  const [disciplineSettings, setDisciplineSettings] = useState<DisciplineSettings>(() => {
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_SETTINGS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_SETTINGS');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.session) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_DISCIPLINE_SETTINGS;
+  });
+
+  const [disciplineRecords, setDisciplineRecords] = useState<DailyDisciplineRecord[]>(() => {
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_RECORDS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_RECORDS');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_DISCIPLINE_RECORDS;
+  });
+
+  const [disciplineViolations, setDisciplineViolations] = useState<DisciplineViolation[]>(() => {
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_VIOLATIONS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_VIOLATIONS');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_DISCIPLINE_VIOLATIONS;
+  });
+
+  // Sync Discipline Coach persistence
+  useEffect(() => {
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_SETTINGS', JSON.stringify(disciplineSettings));
+      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_RECORDS', JSON.stringify(disciplineRecords));
+      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_VIOLATIONS', JSON.stringify(disciplineViolations));
+    } else {
+      localStorage.setItem('TRADEPLAN_DISCIPLINE_SETTINGS', JSON.stringify(disciplineSettings));
+      localStorage.setItem('TRADEPLAN_DISCIPLINE_RECORDS', JSON.stringify(disciplineRecords));
+      localStorage.setItem('TRADEPLAN_DISCIPLINE_VIOLATIONS', JSON.stringify(disciplineViolations));
+    }
+  }, [disciplineSettings, disciplineRecords, disciplineViolations, isDemoUser]);
 
   // Journal Rules State
   const [journalRules, setJournalRules] = useState<JournalRule[]>(() => {
@@ -559,7 +611,6 @@ export default function App() {
     }
   }, [journalRules, isDemoUser]);
 
-
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
     if (!isFirebaseConfigured || !db) return;
@@ -602,7 +653,7 @@ export default function App() {
       const weeklyRevRef = collection(db, 'users', userId, 'weekly_reviews');
       const weeklyRevSnap = await getDocs(weeklyRevRef);
       let loadedWeeklyReviews: WeeklyReview[] = [];
-      weeklyRevSnap.forEach(docSnap => {
+        weeklyRevSnap.forEach(docSnap => {
         loadedWeeklyReviews.push({ id: docSnap.id, ...docSnap.data() } as WeeklyReview);
       });
 
@@ -1304,7 +1355,8 @@ export default function App() {
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
                 { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
-                { id: 'reviews', label: 'EOD / EOW Reviews', icon: ClipboardCheck }
+                { id: 'reviews', label: 'EOD / EOW Reviews', icon: ClipboardCheck },
+                { id: 'discipline', label: 'Discipline Coach', icon: Heart }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -1405,7 +1457,8 @@ export default function App() {
             { id: 'journal', label: 'Journal', icon: BookOpen },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
             { id: 'insights', label: 'Insights', icon: BrainCircuit },
-            { id: 'reviews', label: 'Reviews', icon: ClipboardCheck }
+            { id: 'reviews', label: 'Reviews', icon: ClipboardCheck },
+            { id: 'discipline', label: 'Coach', icon: Heart }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -1938,6 +1991,19 @@ export default function App() {
               onDeleteDailyReview={handleDeleteDailyReview}
               onAddWeeklyReview={handleAddWeeklyReview}
               onDeleteWeeklyReview={handleDeleteWeeklyReview}
+            />
+          )}
+
+          {currentTab === 'discipline' && (
+            <DisciplineCoachView
+              trades={filteredTrades}
+              settings={disciplineSettings}
+              records={disciplineRecords}
+              violations={disciplineViolations}
+              onUpdateSettings={setDisciplineSettings}
+              onUpdateRecords={setDisciplineRecords}
+              onUpdateViolations={setDisciplineViolations}
+              currencySymbol="$"
             />
           )}
         </Suspense>

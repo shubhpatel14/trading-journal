@@ -126,4 +126,133 @@ export interface WeeklyReview {
   createdAt: string;
 }
 
+export interface DisciplinePreset {
+  id: string;
+  label: string;
+  durationMinutes: number;
+}
+
+export interface DisciplineEmotionLevel {
+  id: string;
+  label: string;
+  score: number; // 0 to 100
+  color: string;
+  warningMsg?: string;
+}
+
+export interface DisciplineScoreWeight {
+  id: string;
+  name: string;
+  weight: number; // percentage e.g. 25
+  key: string;
+}
+
+export interface DisciplineWarningRule {
+  id: string;
+  level: 'SAFE' | 'CAUTION' | 'WARNING' | 'CRITICAL';
+  name: string;
+  minScore: number;
+  maxScore: number;
+  message: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+export interface CustomDisciplineMetric {
+  id: string;
+  name: string;
+  maxScore: number;
+  warningThreshold: number;
+  warningMsg: string;
+  description?: string;
+  defaultValue?: number;
+}
+
+export interface DisciplineSettings {
+  session: {
+    durationSeconds: number;
+    presets: DisciplinePreset[];
+  };
+  loss: {
+    currencySymbol: string;
+    minLoss: number;
+    maxLoss: number;
+    stepSize: number;
+    currentLoss: number;
+    dailyLossLimit: number;
+    warningThresholdPercent: number;
+    criticalThresholdPercent: number;
+    labels: string[];
+  };
+  tradeCount: {
+    minTrades: number;
+    maxTrades: number;
+    stepSize: number;
+    currentTradeCount: number;
+    plannedMaxTrades: number;
+    warningThreshold: number;
+    criticalThreshold: number;
+    labels: string[];
+    exceededWarningMessage: string;
+  };
+  emotion: {
+    minScore: number;
+    maxScore: number;
+    currentScore: number;
+    levels: DisciplineEmotionLevel[];
+    warningThreshold: number;
+    criticalThreshold: number;
+  };
+  scoreWeights: DisciplineScoreWeight[];
+  thresholds: {
+    lossWarning: number;
+    lossCritical: number;
+    tradeWarning: number;
+    tradeCritical: number;
+    emotionWarning: number;
+    emotionCritical: number;
+    goodDisciplineMin: number;
+    cautionDisciplineMin: number;
+    warningDisciplineMin: number;
+    criticalDisciplineMax: number;
+  };
+  warnings: DisciplineWarningRule[];
+  customMetrics: CustomDisciplineMetric[];
+  appearance: {
+    layout: 'compact' | 'expanded';
+    showMetrics: boolean;
+    showWarnings: boolean;
+    calendarView: 'month' | 'grid';
+  };
+}
+
+export interface DisciplineViolation {
+  id: string;
+  date: string;
+  time: string;
+  violationName: string;
+  currentValue: string | number;
+  threshold: string | number;
+  pnl: number;
+  notes: string;
+  severity: 'CAUTION' | 'WARNING' | 'CRITICAL';
+}
+
+export interface DailyDisciplineRecord {
+  id: string;
+  date: string;
+  disciplineScore: number;
+  pnl: number;
+  tradeCount: number;
+  emotionScore: number;
+  warningStatus: 'SAFE' | 'CAUTION' | 'WARNING' | 'CRITICAL';
+  categoryScores: Record<string, number>;
+  customMetricScores: Record<string, number>;
+  violations: DisciplineViolation[];
+  notes?: string;
+  createdAt: string;
+}
+
+
 

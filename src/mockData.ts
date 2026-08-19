@@ -1,4 +1,304 @@
-import { Trade, TradePlan, TradingAccount, JournalRule } from './types';
+import { Trade, TradePlan, TradingAccount, JournalRule, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation } from './types';
+
+export const DEFAULT_DISCIPLINE_SETTINGS: DisciplineSettings = {
+  session: {
+    durationSeconds: 1800,
+    presets: [
+      { id: 'p0', label: '5m Cool-Down', durationMinutes: 5 },
+      { id: 'p1', label: '15m Cool-Down', durationMinutes: 15 },
+      { id: 'p2', label: '30m Session', durationMinutes: 30 },
+      { id: 'p3', label: '60m Session', durationMinutes: 60 },
+      { id: 'p4', label: '90m Session', durationMinutes: 90 },
+      { id: 'p5', label: '120m Session', durationMinutes: 120 }
+    ]
+  },
+  loss: {
+    currencySymbol: '$',
+    minLoss: 0,
+    maxLoss: 100,
+    stepSize: 1,
+    currentLoss: 0,
+    dailyLossLimit: 50,
+    warningThresholdPercent: 50,
+    criticalThresholdPercent: 75,
+    labels: ['$0', '$25', '$50', '$75', '$100']
+  },
+  tradeCount: {
+    minTrades: 0,
+    maxTrades: 10,
+    stepSize: 1,
+    currentTradeCount: 0,
+    plannedMaxTrades: 10,
+    warningThreshold: 6,
+    criticalThreshold: 10,
+    labels: ['0', '2', '4', '6', '8', '10'],
+    exceededWarningMessage: 'TRADE FREQUENCY WARNING — REVIEW YOUR PLAN.'
+  },
+  emotion: {
+    minScore: 0,
+    maxScore: 100,
+    currentScore: 50,
+    warningThreshold: 60,
+    criticalThreshold: 75,
+    levels: [
+      { id: 'e1', label: 'FEAR', score: 15, color: '#3b82f6', warningMsg: 'Overly hesitant. Trust your rules.' },
+      { id: 'e2', label: 'ANXIOUS', score: 35, color: '#06b6d4', warningMsg: 'Heightened stress. Slow down execution.' },
+      { id: 'e3', label: 'CALM', score: 50, color: '#10b981', warningMsg: 'Balanced mindset.' },
+      { id: 'e4', label: 'NEUTRAL', score: 60, color: '#8b5cf6', warningMsg: 'Optimal objective state.' },
+      { id: 'e5', label: 'CONFIDENT', score: 70, color: '#f59e0b', warningMsg: 'Focused execution.' },
+      { id: 'e6', label: 'AGGRESSIVE', score: 85, color: '#f97316', warningMsg: 'High intensity! Guard against impulse trades.' },
+      { id: 'e7', label: 'OVERTRADING', score: 98, color: '#ef4444', warningMsg: 'HIGH RISK OF OVERTRADING — CONSIDER STOPPING.' }
+    ]
+  },
+  scoreWeights: [
+    { id: 'w1', name: 'Loss Control', weight: 25, key: 'lossControl' },
+    { id: 'w2', name: 'Trade Frequency', weight: 20, key: 'tradeFrequency' },
+    { id: 'w3', name: 'Emotional Control', weight: 25, key: 'emotionalControl' },
+    { id: 'w4', name: 'Rule Compliance', weight: 20, key: 'ruleCompliance' },
+    { id: 'w5', name: 'Session Discipline', weight: 10, key: 'sessionDiscipline' }
+  ],
+  thresholds: {
+    lossWarning: 25,
+    lossCritical: 50,
+    tradeWarning: 6,
+    tradeCritical: 10,
+    emotionWarning: 60,
+    emotionCritical: 75,
+    goodDisciplineMin: 80,
+    cautionDisciplineMin: 60,
+    warningDisciplineMin: 40,
+    criticalDisciplineMax: 39
+  },
+  warnings: [
+    {
+      id: 'warn-1',
+      level: 'SAFE',
+      name: 'Safe',
+      minScore: 80,
+      maxScore: 100,
+      message: 'YOU ARE WITHIN YOUR PLANNED LIMITS.',
+      description: 'Execution parameters align with your pre-defined trading plan.',
+      icon: 'CheckCircle2',
+      color: '#10b981'
+    },
+    {
+      id: 'warn-2',
+      level: 'CAUTION',
+      name: 'Caution',
+      minScore: 60,
+      maxScore: 79,
+      message: 'SLOW DOWN — TRADING ACTIVITY IS INCREASING.',
+      description: 'Trade frequency or drawdown levels are approaching warning zones.',
+      icon: 'AlertTriangle',
+      color: '#f59e0b'
+    },
+    {
+      id: 'warn-3',
+      level: 'WARNING',
+      name: 'Warning',
+      minScore: 40,
+      maxScore: 59,
+      message: 'DISCIPLINE WARNING — REVIEW YOUR RULES.',
+      description: 'Loss limit or trade frequency threshold breached. Review plan immediately.',
+      icon: 'ShieldAlert',
+      color: '#f97316'
+    },
+    {
+      id: 'warn-4',
+      level: 'CRITICAL',
+      name: 'Critical',
+      minScore: 0,
+      maxScore: 39,
+      message: 'HIGH RISK OF OVERTRADING — CONSIDER STOPPING.',
+      description: 'Multiple thresholds exceeded. High emotional bias detected.',
+      icon: 'XCircle',
+      color: '#ef4444'
+    }
+  ],
+  customMetrics: [
+    {
+      id: 'cm-1',
+      name: 'Revenge Trading',
+      maxScore: 100,
+      warningThreshold: 70,
+      warningMsg: 'You may be revenge trading after a recent loss.',
+      description: 'Taking impulsive positions to win back lost PnL.',
+      defaultValue: 20
+    },
+    {
+      id: 'cm-2',
+      name: 'FOMO Entry',
+      maxScore: 100,
+      warningThreshold: 65,
+      warningMsg: 'Entering late without structural confirmation.',
+      description: 'Fear of missing out on sudden market momentum.',
+      defaultValue: 15
+    },
+    {
+      id: 'cm-3',
+      name: 'Moving Stop Loss',
+      maxScore: 100,
+      warningThreshold: 50,
+      warningMsg: 'Widen or shift stop loss during active trade.',
+      description: 'Modifying stop loss away from planned invalidate point.',
+      defaultValue: 0
+    }
+  ],
+  appearance: {
+    layout: 'expanded',
+    showMetrics: true,
+    showWarnings: true,
+    calendarView: 'month'
+  }
+};
+
+export const INITIAL_DISCIPLINE_VIOLATIONS: DisciplineViolation[] = [
+  {
+    id: 'v-1',
+    date: '2026-08-18',
+    time: '14:45',
+    violationName: 'Trade Frequency Warning',
+    currentValue: '7 trades',
+    threshold: '6 trades',
+    pnl: -214,
+    notes: 'Exceeded warning threshold of 6 trades during New York open session.',
+    severity: 'WARNING'
+  },
+  {
+    id: 'v-2',
+    date: '2026-08-15',
+    time: '16:10',
+    violationName: 'Revenge Trading Metric Spike',
+    currentValue: '78 / 100',
+    threshold: '70 / 100',
+    pnl: -450,
+    notes: 'Entered immediate counter-trade 3 minutes after stopping out on Gold.',
+    severity: 'CRITICAL'
+  },
+  {
+    id: 'v-3',
+    date: '2026-08-12',
+    time: '10:20',
+    violationName: 'Loss Limit Warning',
+    currentValue: '$1,200',
+    threshold: '$1,000',
+    pnl: -1200,
+    notes: 'Daily loss crossed 50% warning threshold.',
+    severity: 'CAUTION'
+  }
+];
+
+export const INITIAL_DISCIPLINE_RECORDS: DailyDisciplineRecord[] = [
+  {
+    id: 'dr-2026-08-18',
+    date: '2026-08-18',
+    disciplineScore: 82,
+    pnl: 485,
+    tradeCount: 3,
+    emotionScore: 60,
+    warningStatus: 'SAFE',
+    categoryScores: {
+      lossControl: 90,
+      tradeFrequency: 85,
+      emotionalControl: 80,
+      ruleCompliance: 80,
+      sessionDiscipline: 75
+    },
+    customMetricScores: {
+      'cm-1': 10,
+      'cm-2': 15,
+      'cm-3': 0
+    },
+    violations: [],
+    notes: 'Very disciplined execution during London session. Stuck to planned risk.',
+    createdAt: '2026-08-18T18:00:00Z'
+  },
+  {
+    id: 'dr-2026-08-17',
+    date: '2026-08-17',
+    disciplineScore: 38,
+    pnl: -214,
+    tradeCount: 14,
+    emotionScore: 82,
+    warningStatus: 'CRITICAL',
+    categoryScores: {
+      lossControl: 30,
+      tradeFrequency: 25,
+      emotionalControl: 40,
+      ruleCompliance: 50,
+      sessionDiscipline: 45
+    },
+    customMetricScores: {
+      'cm-1': 80,
+      'cm-2': 70,
+      'cm-3': 60
+    },
+    violations: [
+      {
+        id: 'v-17-1',
+        date: '2026-08-17',
+        time: '15:20',
+        violationName: 'Overtrading Breach',
+        currentValue: '14 trades',
+        threshold: '10 trades',
+        pnl: -214,
+        notes: 'Chased micro-moves after initial morning loss.',
+        severity: 'CRITICAL'
+      }
+    ],
+    notes: 'Chased Gold volatility after inflation numbers. Needs EOD review.',
+    createdAt: '2026-08-17T20:00:00Z'
+  },
+  {
+    id: 'dr-2026-08-16',
+    date: '2026-08-16',
+    disciplineScore: 92,
+    pnl: 850,
+    tradeCount: 2,
+    emotionScore: 50,
+    warningStatus: 'SAFE',
+    categoryScores: {
+      lossControl: 95,
+      tradeFrequency: 95,
+      emotionalControl: 90,
+      ruleCompliance: 90,
+      sessionDiscipline: 90
+    },
+    customMetricScores: {
+      'cm-1': 0,
+      'cm-2': 5,
+      'cm-3': 0
+    },
+    violations: [],
+    notes: 'A+ setup on XAUUSD. Took profits according to plan.',
+    createdAt: '2026-08-16T17:00:00Z'
+  },
+  {
+    id: 'dr-2026-08-15',
+    date: '2026-08-15',
+    disciplineScore: 68,
+    pnl: -450,
+    tradeCount: 6,
+    emotionScore: 78,
+    warningStatus: 'CAUTION',
+    categoryScores: {
+      lossControl: 70,
+      tradeFrequency: 65,
+      emotionalControl: 60,
+      ruleCompliance: 75,
+      sessionDiscipline: 70
+    },
+    customMetricScores: {
+      'cm-1': 55,
+      'cm-2': 40,
+      'cm-3': 20
+    },
+    violations: [INITIAL_DISCIPLINE_VIOLATIONS[1]],
+    notes: 'Emotional fatigue led to overleveraging on EURUSD.',
+    createdAt: '2026-08-15T19:00:00Z'
+  }
+];
+
 
 export const DEFAULT_JOURNAL_RULES: JournalRule[] = [
   { id: 'rule-1', label: 'Liquidity Swept', description: 'Price swept session high/low liquidity before entry' },
