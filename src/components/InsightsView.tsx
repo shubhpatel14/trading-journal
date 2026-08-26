@@ -34,14 +34,16 @@ import {
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Target
 } from 'lucide-react';
-import { Trade, TradingAccount, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { Trade, TradingAccount, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 interface InsightsViewProps {
   trades: Trade[];
   selectedAccountId: string;
   accounts: TradingAccount[];
+  setups: SetupDefinition[];
 }
 
 // ============================================================================
@@ -679,7 +681,8 @@ export type TimePeriod = 'today' | '7d' | '30d' | '3m' | '1y' | 'all';
 export default function InsightsView({ 
   trades, 
   selectedAccountId, 
-  accounts 
+  accounts,
+  setups
 }: InsightsViewProps) {
   // Time Period Filter State
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('30d');
@@ -695,6 +698,8 @@ export default function InsightsView({
   const activeAccount = useMemo(() => {
     return accounts.find(a => a.id === selectedAccountId);
   }, [accounts, selectedAccountId]);
+
+  const setupById = useMemo(() => new Map(setups.map(setup => [setup.id, setup])), [setups]);
 
   const activeInitialCapital = useMemo(() => {
     if (selectedAccountId === 'ALL') {
@@ -720,16 +725,20 @@ export default function InsightsView({
     return `${sign}${symbol}${formatted}`;
   };
 
+  // Open positions do not belong in realized expectancy, drawdown, or win-rate
+  // analysis. They remain visible in the Journal until they are closed.
+  const closedTrades = useMemo(() => trades.filter(trade => trade.status !== 'OPEN'), [trades]);
+
   // Filter trades based on selected time period
   const filteredTrades = useMemo(() => {
-    if (timePeriod === 'all') return trades;
-    if (trades.length === 0) return [];
+    if (timePeriod === 'all') return closedTrades;
+    if (closedTrades.length === 0) return [];
 
     const now = new Date();
     let refTime = now.getTime();
 
     // Check if any trade date is in the future relative to system time
-    trades.forEach(t => {
+    closedTrades.forEach(t => {
       if (t.date) {
         const tTime = new Date(`${t.date}T${t.time || '12:00'}`).getTime();
         if (!isNaN(tTime) && tTime > refTime) {
@@ -738,7 +747,7 @@ export default function InsightsView({
       }
     });
 
-    return trades.filter(t => {
+    return closedTrades.filter(t => {
       if (!t.date) return false;
       const tradeDateObj = new Date(`${t.date}T${t.time || '12:00'}`);
       const tradeTime = tradeDateObj.getTime();
@@ -761,7 +770,7 @@ export default function InsightsView({
           return true;
       }
     });
-  }, [trades, timePeriod]);
+  }, [closedTrades, timePeriod]);
 
   // Sort filtered trades chronologically
   const sortedTrades = useMemo(() => {
@@ -803,7 +812,6 @@ export default function InsightsView({
     }
 
     let totalPnl = 0;
-    let totalGrossPricePnl = 0;
     let totalFees = 0;
     let winCount = 0;
     let lossCount = 0;
@@ -826,7 +834,6 @@ export default function InsightsView({
       const netPnl = getTradeNetPnl(t);
       const fee = getTradeTotalFees(t);
       totalPnl += netPnl;
-      totalGrossPricePnl += t.pnl;
       totalFees += fee;
       rollingBalance += netPnl;
 
@@ -943,8 +950,9 @@ export default function InsightsView({
     let cumulativePnl = 0;
 
     const points = sortedTrades.map((t, idx) => {
-      cumulativePnl += t.pnl;
-      currentEquity += t.pnl;
+      const netPnl = getTradeNetPnl(t);
+      cumulativePnl += netPnl;
+      currentEquity += netPnl;
 
       if (currentEquity > peakEquity) {
         peakEquity = currentEquity;
@@ -958,7 +966,7 @@ export default function InsightsView({
         date: t.date,
         time: t.time || '12:00',
         asset: t.asset,
-        pnl: t.pnl,
+        pnl: netPnl,
         cumulativePnl,
         equity: currentEquity,
         peak: peakEquity,
@@ -996,16 +1004,17 @@ export default function InsightsView({
     sortedTrades.forEach(t => {
       const d = new Date(t.date);
       const dayIdx = d.getDay();
-      daysData[dayIdx].pnl = Number((daysData[dayIdx].pnl + t.pnl).toFixed(2));
+      const netPnl = getTradeNetPnl(t);
+      daysData[dayIdx].pnl = Number((daysData[dayIdx].pnl + netPnl).toFixed(2));
       daysData[dayIdx].trades += 1;
-      if (t.pnl > 0) daysData[dayIdx].wins += 1;
+      if (netPnl > 0) daysData[dayIdx].wins += 1;
 
       if (t.time) {
         const hour = parseInt(t.time.split(':')[0], 10);
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
-          hourlyData[hour].pnl = Number((hourlyData[hour].pnl + t.pnl).toFixed(2));
+          hourlyData[hour].pnl = Number((hourlyData[hour].pnl + netPnl).toFixed(2));
           hourlyData[hour].trades += 1;
-          if (t.pnl > 0) hourlyData[hour].wins += 1;
+          if (netPnl > 0) hourlyData[hour].wins += 1;
         }
       }
     });
@@ -1032,7 +1041,7 @@ export default function InsightsView({
     ];
 
     sortedTrades.forEach(t => {
-      const p = t.pnl;
+      const p = getTradeNetPnl(t);
       for (const b of buckets) {
         if (p >= b.min && p < b.max) {
           b.count += 1;
@@ -1060,10 +1069,11 @@ export default function InsightsView({
     sortedTrades.forEach(t => {
       const a = t.asset || 'XAUUSD';
       if (!map[a]) map[a] = { pnl: 0, trades: 0, wins: 0, volume: 0 };
-      map[a].pnl += t.pnl;
+      const netPnl = getTradeNetPnl(t);
+      map[a].pnl += netPnl;
       map[a].trades += 1;
       map[a].volume += t.size || 1;
-      if (t.pnl > 0) map[a].wins += 1;
+      if (netPnl > 0) map[a].wins += 1;
     });
 
     const list = Object.entries(map).map(([asset, d]) => ({
@@ -1080,22 +1090,25 @@ export default function InsightsView({
 
   // 6. SETUP ANALYTICS & EXPECTANCY
   const setupAnalytics = useMemo(() => {
-    const map: Record<string, { pnl: number; trades: number; wins: number; grossProfit: number; grossLoss: number }> = {};
+    const map: Record<string, { setup: string; setupId?: string; pnl: number; trades: number; wins: number; grossProfit: number; grossLoss: number }> = {};
     
     sortedTrades.forEach(t => {
-      const s = t.setup || 'Standard Setup';
-      if (!map[s]) map[s] = { pnl: 0, trades: 0, wins: 0, grossProfit: 0, grossLoss: 0 };
-      map[s].pnl += t.pnl;
-      map[s].trades += 1;
-      if (t.pnl > 0) {
-        map[s].wins += 1;
-        map[s].grossProfit += t.pnl;
+      const linkedSetup = t.setupId ? setupById.get(t.setupId) : undefined;
+      const setupKey = linkedSetup ? `id:${linkedSetup.id}` : `legacy:${t.setup || 'Standard Setup'}`;
+      const setupLabel = linkedSetup?.name || t.setup || 'Standard Setup';
+      if (!map[setupKey]) map[setupKey] = { setup: setupLabel, setupId: linkedSetup?.id, pnl: 0, trades: 0, wins: 0, grossProfit: 0, grossLoss: 0 };
+      const netPnl = getTradeNetPnl(t);
+      map[setupKey].pnl += netPnl;
+      map[setupKey].trades += 1;
+      if (netPnl > 0) {
+        map[setupKey].wins += 1;
+        map[setupKey].grossProfit += netPnl;
       } else {
-        map[s].grossLoss += Math.abs(t.pnl);
+        map[setupKey].grossLoss += Math.abs(netPnl);
       }
     });
 
-    return Object.entries(map).map(([setup, d]) => {
+    return Object.values(map).map(d => {
       const winRate = (d.wins / d.trades) * 100;
       const avgWin = d.wins > 0 ? d.grossProfit / d.wins : 0;
       const avgLoss = (d.trades - d.wins) > 0 ? d.grossLoss / (d.trades - d.wins) : 0;
@@ -1103,7 +1116,8 @@ export default function InsightsView({
       const expectancy = (winRate / 100 * avgWin) - ((1 - (winRate / 100)) * avgLoss);
       
       return {
-        setup,
+        setup: d.setup,
+        setupId: d.setupId,
         pnl: d.pnl,
         trades: d.trades,
         winRate,
@@ -1111,7 +1125,7 @@ export default function InsightsView({
         expectancy
       };
     }).sort((a, b) => b.pnl - a.pnl);
-  }, [sortedTrades]);
+  }, [sortedTrades, setupById]);
 
   // 7. BEHAVIORAL MISTAKES ANALYTICS
   const behavioralAnalytics = useMemo(() => {
@@ -1123,7 +1137,7 @@ export default function InsightsView({
           if (m === 'None') return;
           if (!mistakeMap[m]) mistakeMap[m] = { count: 0, totalLoss: 0 };
           mistakeMap[m].count += 1;
-          mistakeMap[m].totalLoss += t.pnl;
+          mistakeMap[m].totalLoss += getTradeNetPnl(t);
         });
       }
     });
@@ -1160,7 +1174,7 @@ export default function InsightsView({
       };
     }
 
-    const pnls = sortedTrades.map(t => t.pnl);
+    const pnls = sortedTrades.map(t => getTradeNetPnl(t));
     const avgPnL = kpis.totalPnl / totalTrades;
     
     // Standard deviation of trade PnL
@@ -1214,14 +1228,15 @@ export default function InsightsView({
     let largestLoss = 0;
 
     sortedTrades.forEach(t => {
-      if (t.pnl > largestWin) largestWin = t.pnl;
-      if (t.pnl < largestLoss) largestLoss = t.pnl;
+      const netPnl = getTradeNetPnl(t);
+      if (netPnl > largestWin) largestWin = netPnl;
+      if (netPnl < largestLoss) largestLoss = netPnl;
 
-      if (t.pnl > 0) {
+      if (netPnl > 0) {
         curWins++;
         curLosses = 0;
         if (curWins > maxWins) maxWins = curWins;
-      } else if (t.pnl < 0) {
+      } else if (netPnl < 0) {
         curLosses++;
         curWins = 0;
         if (curLosses > maxLosses) maxLosses = curLosses;
@@ -1266,10 +1281,10 @@ export default function InsightsView({
     if (kpis.bestSession !== 'N/A') {
       list.push({
         title: 'Session Alpha Advantage',
-        confidence: 94,
+        confidence: Math.min(90, 50 + sortedTrades.length),
         priority: 'HIGH',
-        evidence: `Your executions in ${kpis.bestSession} session produce your highest net cumulative return.`,
-        recommendation: `Focus 80% of your trading capital exclusively during the ${kpis.bestSession} session window to maximize edge and reduce exposure.`
+        evidence: `${kpis.bestSession} currently has the highest net cumulative return in this selected sample.`,
+        recommendation: `Review the next ${Math.max(10, 20 - sortedTrades.length)} comparable trades in the ${kpis.bestSession} window before making any session or risk changes.`
       });
     }
 
@@ -1277,40 +1292,52 @@ export default function InsightsView({
       const topMistake = behavioralAnalytics[0];
       list.push({
         title: 'Psychological Capital Leak',
-        confidence: 89,
+        confidence: Math.min(85, 45 + topMistake.count * 8),
         priority: 'HIGH',
-        evidence: `The psychological error "${topMistake.mistake}" accounts for ${formatVal(topMistake.totalLoss)} in realized losses over ${topMistake.count} trades.`,
-        recommendation: `Establish an automated pre-trade checklist enforcing entry rules to eliminate ${topMistake.mistake} errors.`
+        evidence: `"${topMistake.mistake}" was tagged on ${topMistake.count} trades with a combined ${formatVal(topMistake.totalLoss, { showSign: true })} net result.`,
+        recommendation: `Review the tagged charts and notes, then add one specific pre-trade or exit rule that addresses ${topMistake.mistake}.`
       });
     }
 
     if (kpis.avgRiskReward < 1.5) {
       list.push({
         title: 'Sub-Optimal Risk:Reward Ratio',
-        confidence: 86,
+        confidence: Math.min(85, 45 + sortedTrades.length),
         priority: 'MEDIUM',
         evidence: `Your average planned Risk:Reward ratio is currently ${kpis.avgRiskReward.toFixed(2)}, below the institutional benchmark of 1.50.`,
-        recommendation: `Target a minimum 1:2.0 Risk:Reward ratio by placing take-profit targets near 15m/1HR key liquidity swing points.`
+        recommendation: `Review whether targets and stops were set before entry; test any Risk:Reward change on a new sample instead of changing size.`
       });
     }
 
     if (kpis.bestAsset !== 'N/A') {
       list.push({
         title: 'Instrument Dominance',
-        confidence: 92,
+        confidence: Math.min(90, 50 + sortedTrades.length),
         priority: 'HIGH',
         evidence: `${kpis.bestAsset} represents your highest performing financial instrument.`,
-        recommendation: `Increase lot sizing by 20% on ${kpis.bestAsset} setups while reducing capital allocation on underperforming assets.`
+        recommendation: `Keep size unchanged and collect more comparable ${kpis.bestAsset} trades before deciding whether the edge is durable.`
       });
     }
 
     return list;
   }, [sortedTrades, kpis, behavioralAnalytics, formatVal]);
 
+  const sampleAssessment = kpis.totalTrades >= 30
+    ? { label: 'Decision-ready', tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', note: '30+ closed trades gives patterns useful weight.' }
+    : kpis.totalTrades >= 10
+      ? { label: 'Developing sample', tone: 'text-blue-700 bg-blue-50 border-blue-200', note: 'Useful directional evidence; keep logging before changing a process.' }
+      : { label: 'Exploratory sample', tone: 'text-amber-800 bg-amber-50 border-amber-200', note: 'Treat patterns as hypotheses, not sizing signals.' };
+  const strongestSetup = setupAnalytics[0];
+  const weakestSetup = [...setupAnalytics].sort((a, b) => a.pnl - b.pnl)[0];
+  const topMistake = behavioralAnalytics[0];
+  const riskState = kpis.maxDrawdownPct >= 5 || advancedStats.maxConsecLosses >= 3
+    ? { label: 'Defensive posture', detail: 'Avoid increasing size while the drawdown or losing streak is active.', tone: 'text-rose-700 bg-rose-50 border-rose-200' }
+    : { label: 'Risk contained', detail: 'Keep risk fixed and let the next sample validate the process.', tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+
   // Server-side AI Coach Audit Trigger
   const generateAiAudit = async () => {
-    if (trades.length === 0) {
-      alert('Please log trades in your journal before generating an AI performance audit.');
+    if (sortedTrades.length === 0) {
+      alert('Select a period with closed trades before generating an AI performance audit.');
       return;
     }
     setLoadingAi(true);
@@ -1319,7 +1346,7 @@ export default function InsightsView({
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades })
+        body: JSON.stringify({ trades: sortedTrades })
       });
       if (!response.ok) throw new Error('Server returned an error');
       const result = await response.json();
@@ -1365,8 +1392,8 @@ export default function InsightsView({
     link.click();
   };
 
-  // REQUIREMENT: EMPTY STATE (< 3 TRADES)
-  if (trades.length < 3) {
+  // A few trades can be displayed, but they are not enough for reliable tactical conclusions.
+  if (closedTrades.length < 3) {
     return (
       <div className="space-y-6" id="insights-tab">
         <div className="flex justify-between items-center">
@@ -1375,7 +1402,7 @@ export default function InsightsView({
               <BrainCircuit className="text-blue-600" />
               Tactical & Performance Analytics
             </h1>
-            <p className="text-xs text-slate-500 font-sans">Institutional-grade quantitative portfolio analysis & behavioral metrics</p>
+            <p className="text-xs text-slate-500 font-sans">Performance, process, and risk evidence from your closed trades.</p>
           </div>
         </div>
 
@@ -1386,13 +1413,13 @@ export default function InsightsView({
           <div className="space-y-2">
             <h2 className="text-lg font-extrabold text-slate-850">Not enough trading history to generate this analysis</h2>
             <p className="text-xs text-slate-500 font-sans leading-relaxed">
-              Log at least <strong className="text-blue-600 font-mono">3 executed trades</strong> in your trading journal to unlock institutional equity curves, time heatmaps, behavioral mistake leaks, SQN ratings, and AI coaching observations.
+              Close and journal at least <strong className="text-blue-600 font-mono">3 trades</strong> to unlock equity curves, time patterns, behavioral tags, and tactical coaching. Open positions are excluded until they are closed.
             </p>
           </div>
           <div className="pt-2 flex justify-center items-center gap-3 text-2xs font-extrabold text-slate-400 uppercase font-mono">
             <span>Minimum Trades Required: 3</span>
             <span>•</span>
-            <span>Current Logged Trades: {trades.length}</span>
+            <span>Closed Trades: {closedTrades.length}</span>
           </div>
         </div>
       </div>
@@ -1410,7 +1437,7 @@ export default function InsightsView({
             Tactical & Risk Performance Analytics
           </h1>
           <p className="text-xs text-slate-500 font-sans">
-            Institutional portfolio analytics comparable to Bloomberg Terminal, TradeZella, and Edgewonk.
+            Turn journaled trades into clear evidence about performance, process, and risk.
           </p>
         </div>
 
@@ -1477,7 +1504,7 @@ export default function InsightsView({
         </div>
         <div className="text-3xs text-slate-400 font-mono flex items-center gap-1.5">
           <Clock size={12} className="text-slate-400" />
-          <span>Active Filter: <strong className="text-slate-700">{sortedTrades.length}</strong> of <strong className="text-slate-700">{trades.length}</strong> trades</span>
+          <span>Active Filter: <strong className="text-slate-700">{sortedTrades.length}</strong> of <strong className="text-slate-700">{closedTrades.length}</strong> closed trades</span>
         </div>
       </div>
 
@@ -1496,11 +1523,64 @@ export default function InsightsView({
             onClick={() => setTimePeriod('all')}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
           >
-            Show All Time Trades ({trades.length})
+            Show All Closed Trades ({closedTrades.length})
           </button>
         </div>
       ) : (
         <>
+          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-5 sm:p-7 text-white shadow-lg">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-blue-500/25 blur-3xl" />
+            <div className="pointer-events-none absolute bottom-0 left-1/3 h-24 w-24 rounded-full bg-violet-500/20 blur-2xl" />
+            <div className="relative space-y-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-blue-200 text-3xs font-black uppercase tracking-[0.18em]">
+                    <Target size={14} />
+                    Tactical brief
+                  </div>
+                  <h2 className="mt-2 text-xl sm:text-2xl font-black tracking-tight">What the current trade sample is telling you</h2>
+                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-300">Use this as a review prompt—not a signal to increase size. All figures below are net of recorded fees and exclude open trades.</p>
+                </div>
+                <span className={`w-fit rounded-full border px-3 py-1.5 text-3xs font-black uppercase tracking-wider ${sampleAssessment.tone}`}>
+                  {sampleAssessment.label}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Evidence quality</div>
+                  <div className="mt-2 text-lg font-black">{kpis.totalTrades} closed trades</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">{sampleAssessment.note}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Focus for review</div>
+                  <div className="mt-2 text-sm font-black text-emerald-300">{strongestSetup?.setup || 'No setup data yet'}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">
+                    {strongestSetup ? `${strongestSetup.trades} trades · ${formatVal(strongestSetup.pnl, { showSign: true })} net. Compare it with lower-performing setups before changing rules.` : 'Log setup names consistently to compare them.'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Risk posture</div>
+                  <div className={`mt-2 text-sm font-black ${riskState.label === 'Risk contained' ? 'text-emerald-300' : 'text-rose-300'}`}>{riskState.label}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">{riskState.detail} Max drawdown: {kpis.maxDrawdownPct.toFixed(2)}%.</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
+                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Process check</div>
+                  <div className="mt-2 text-sm font-black text-amber-300">{topMistake ? topMistake.mistake : 'No mistakes tagged'}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">
+                    {topMistake ? `${topMistake.count} tagged trades · ${formatVal(topMistake.totalLoss, { showSign: true })} net associated result. Review the chart and notes before drawing a causal conclusion.` : 'Keep tagging execution mistakes to make this signal useful.'}
+                  </p>
+                </div>
+              </div>
+
+              {weakestSetup && strongestSetup && weakestSetup.setup !== strongestSetup.setup && (
+                <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-3xs text-amber-100">
+                  Review contrast: <strong>{strongestSetup.setup}</strong> is currently {formatVal(strongestSetup.pnl, { showSign: true })} net, while <strong>{weakestSetup.setup}</strong> is {formatVal(weakestSetup.pnl, { showSign: true })} net. Check the sample count, time of day, and checklist quality before deciding whether to pause a setup.
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* SECTION 1: EXECUTIVE SUMMARY KPI CARDS */}
           <section className="space-y-3">
             <div className="flex justify-between items-center">
@@ -1508,7 +1588,7 @@ export default function InsightsView({
                 <Activity size={14} className="text-blue-600" />
                 Section 1 — Executive Summary KPIs
               </h2>
-              <span className="text-3xs text-slate-400 font-mono">10 Institutional Metrics</span>
+              <span className="text-3xs text-slate-400 font-mono">10 core metrics · net of fees</span>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
@@ -2178,8 +2258,8 @@ export default function InsightsView({
             {behavioralAnalytics.length === 0 ? (
               <div className="p-8 text-center bg-emerald-50/50 border border-emerald-100 rounded-2xl text-emerald-800 text-xs font-sans space-y-1">
                 <CheckCircle2 size={20} className="mx-auto text-emerald-600" />
-                <strong className="block font-bold">Zero Execution Leaks Recorded</strong>
-                <p className="text-3xs text-emerald-700">All logged trades strictly adhered to your trading discipline guidelines.</p>
+                <strong className="block font-bold">No mistakes tagged in this period</strong>
+                <p className="text-3xs text-emerald-700">Keep adding honest reflection tags—the insight is only as useful as the journal detail.</p>
               </div>
             ) : (
               <div className="space-y-3">

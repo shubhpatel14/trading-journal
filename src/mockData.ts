@@ -1,4 +1,4 @@
-import { Trade, TradePlan, TradingAccount, JournalRule, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation } from './types';
+import { Trade, TradePlan, TradingAccount, JournalRule, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation, SetupDefinition } from './types';
 
 export const DEFAULT_DISCIPLINE_SETTINGS: DisciplineSettings = {
   session: {
@@ -311,6 +311,85 @@ export const DEFAULT_JOURNAL_RULES: JournalRule[] = [
   { id: 'rule-8', label: 'Distance to Target', description: 'Sufficient R:R distance to major target/liquidity pool' },
 ];
 
+export const DEFAULT_SETUP_DEFINITIONS: SetupDefinition[] = [
+  {
+    id: 'setup-highs-rejection',
+    name: 'Highs Rejection',
+    description: 'A reversal playbook after a sweep of session or higher-timeframe highs, confirmed by bearish displacement and structure shift.',
+    preferredAssets: ['XAUUSD', 'GBPUSD'],
+    preferredSessions: ['LONDON', 'NEW YORK'],
+    direction: 'SELL',
+    marketConditions: 'Price reaches a marked premium / liquidity pool with room to the opposing draw on liquidity.',
+    entryRules: ['Sweep of a marked high or liquidity pool', 'Bearish displacement or break of structure', 'Entry only after lower-timeframe confirmation'],
+    invalidationRules: ['No displacement after the sweep', 'Close beyond the defined higher-timeframe invalidation level'],
+    managementRules: ['Define stop before entry', 'Take partials only at planned liquidity targets', 'Do not re-enter after a news-driven invalidation'],
+    tags: ['reversal', 'liquidity', 'structure'],
+    minChecklistScore: 6,
+    riskPerTrade: 0.5,
+    maxTradesPerDay: 2,
+    status: 'ACTIVE',
+    createdAt: '2026-07-01T08:00:00.000Z',
+    updatedAt: '2026-07-01T08:00:00.000Z'
+  },
+  {
+    id: 'setup-bos-downside',
+    name: 'BoS Downside',
+    description: 'Trend-continuation short after a clean downside break of structure and retest.',
+    preferredAssets: ['XAUUSD', 'EURUSD'],
+    preferredSessions: ['LONDON', 'NEW YORK'],
+    direction: 'SELL',
+    marketConditions: 'Bearish higher-timeframe bias with a clear downside liquidity objective.',
+    entryRules: ['Higher-timeframe bearish bias', 'Clean downside break of structure', 'Retest or lower-timeframe trigger with defined invalidation'],
+    invalidationRules: ['Price reclaims the broken structure with acceptance', 'Entry would be directly into nearby opposing liquidity'],
+    managementRules: ['Keep risk fixed', 'Move to break-even only after the planned confirmation', 'Record whether the retest was clean or chased'],
+    tags: ['continuation', 'BOS', 'trend'],
+    minChecklistScore: 6,
+    riskPerTrade: 0.5,
+    maxTradesPerDay: 2,
+    status: 'ACTIVE',
+    createdAt: '2026-07-01T08:00:00.000Z',
+    updatedAt: '2026-07-01T08:00:00.000Z'
+  },
+  {
+    id: 'setup-ema-rejection',
+    name: 'EMA Rejection',
+    description: 'A trend-aligned continuation from a tested moving average after price confirms rejection.',
+    preferredAssets: ['GBPUSD', 'EURUSD'],
+    preferredSessions: ['LONDON'],
+    direction: 'BOTH',
+    marketConditions: 'Directional session with a respected higher-timeframe moving average and clear room to target.',
+    entryRules: ['Trend and EMA slope are aligned', 'Price rejects the EMA with a clear confirmation candle', 'Entry has pre-defined stop and target'],
+    invalidationRules: ['EMA loses slope or price accepts through it', 'Countertrend higher-timeframe liquidity is too close'],
+    managementRules: ['Do not enter late after an extended move', 'Keep target aligned with the next liquidity pool'],
+    tags: ['continuation', 'EMA', 'trend'],
+    minChecklistScore: 5,
+    riskPerTrade: 0.5,
+    maxTradesPerDay: 2,
+    status: 'ACTIVE',
+    createdAt: '2026-07-01T08:00:00.000Z',
+    updatedAt: '2026-07-01T08:00:00.000Z'
+  },
+  {
+    id: 'setup-liquidity-sweep',
+    name: 'Liquidity Sweep',
+    description: 'A reversal or continuation trade only after liquidity is taken and price confirms the intended direction.',
+    preferredAssets: ['XAUUSD', 'GBPUSD'],
+    preferredSessions: ['LONDON', 'NEW YORK'],
+    direction: 'BOTH',
+    marketConditions: 'A clearly marked session high, low, or equal high/low is available to sweep.',
+    entryRules: ['Liquidity level is marked before the session', 'Sweep is followed by displacement', 'Lower-timeframe structure confirms the intended direction'],
+    invalidationRules: ['Sweep occurs without confirmation', 'A second impulse invalidates the structure'],
+    managementRules: ['Avoid chasing the first candle after the sweep', 'Log whether the setup occurred near scheduled news'],
+    tags: ['liquidity', 'reversal', 'confirmation'],
+    minChecklistScore: 6,
+    riskPerTrade: 0.5,
+    maxTradesPerDay: 2,
+    status: 'ACTIVE',
+    createdAt: '2026-07-01T08:00:00.000Z',
+    updatedAt: '2026-07-01T08:00:00.000Z'
+  }
+];
+
 export const INITIAL_ACCOUNTS: TradingAccount[] = [
   {
     id: 'acc-1',
@@ -343,6 +422,7 @@ export const INITIAL_TRADE_PLANS: TradePlan[] = [
     id: 'plan-1',
     date: '2026-07-16',
     asset: 'XAUUSD',
+    setupId: 'setup-highs-rejection',
     bias: 'BEARISH',
     fourHour: {
       text: 'Looks bearish and on a major resistance level which was prior support. CPI inflation was lower than expected, oil prices were low in June but raised again. Potential more downfall if Iran-US tensions escalate.',

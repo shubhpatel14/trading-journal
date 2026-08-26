@@ -485,6 +485,12 @@
   border-top: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 -10px 30px rgba(124, 58, 237, 0.12);
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mobile-bottom-dock::-webkit-scrollbar {
+  display: none;
 }
 
 @media (max-width: 640px) {
@@ -495,5 +501,4 @@
     border-radius: 20px;
   }
 }
-
 

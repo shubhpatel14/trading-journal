@@ -18,6 +18,7 @@ export interface TradePlan {
   id: string;
   date: string; // YYYY-MM-DD
   asset: string; // e.g., XAUUSD (Gold)
+  setupId?: string; // Optional link to a reusable Setup Playbook
   bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
   fourHour: TimeframeAnalysis;
   oneHour: TimeframeAnalysis;
@@ -36,9 +37,48 @@ export interface JournalRule {
   weight?: number;
 }
 
+export type SetupStatus = 'ACTIVE' | 'ARCHIVED';
+
+/**
+ * A reusable execution playbook. The id is deliberately stored on trades and
+ * plans so that historical performance remains connected even if its name is
+ * edited later.
+ */
+export interface SetupDefinition {
+  id: string;
+  name: string;
+  description: string;
+  preferredAssets: string[];
+  preferredSessions: Array<'LONDON' | 'NEW YORK' | 'ASIA'>;
+  direction: 'BUY' | 'SELL' | 'BOTH';
+  marketConditions: string;
+  entryRules: string[];
+  invalidationRules: string[];
+  managementRules: string[];
+  tags: string[];
+  minChecklistScore?: number;
+  riskPerTrade?: number;
+  maxTradesPerDay?: number;
+  status: SetupStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Trade {
   id: string;
   accountId: string; // Associated trading account ID
+  setupId?: string; // Stable link to a SetupDefinition when one was selected
+  setupRuleSnapshot?: string[]; // Playbook rules at the time this trade was logged
+  /**
+   * Per-playbook rule answers are kept separately from the general journal
+   * checklist.  The numeric values make historical setup adherence measurable
+   * even after the playbook itself is edited.
+   */
+  setupRuleChecks?: Record<string, boolean>;
+  setupRuleScore?: number;
+  setupRuleMaxScore?: number;
+  setupMinChecklistScore?: number;
+  setupMaxTradesPerDay?: number;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   asset: string;

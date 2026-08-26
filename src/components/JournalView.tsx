@@ -33,7 +33,7 @@ import {
   Check,
   Coins
 } from 'lucide-react';
-import { Trade, TradingAccount, JournalRule, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { Trade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
 import ScreenshotUploader from './ScreenshotUploader';
 
@@ -41,6 +41,7 @@ import ScreenshotUploader from './ScreenshotUploader';
 interface JournalViewProps {
   trades: Trade[];
   accounts: TradingAccount[];
+  setups: SetupDefinition[];
   selectedAccountId: string;
   journalRules: JournalRule[];
   onAddRule: (rule: Omit<JournalRule, 'id'>) => void;
@@ -52,7 +53,14 @@ interface JournalViewProps {
   onDeleteTrade: (id: string) => void;
   prefillTrade: Partial<Trade> | null;
   onClearPrefill: () => void;
-  onImportBackup: (backupTrades: Trade[]) => void;
+  onImportBackup: (backupTrades: Trade[], backupSetups?: SetupDefinition[]) => {
+    added: number;
+    updated: number;
+    total: number;
+    setupsAdded?: number;
+    setupsUpdated?: number;
+    setupTotal?: number;
+  };
   onRefreshData?: () => Promise<void>;
   initialDateFilter?: string | null;
   onClearDateFilter?: () => void;
@@ -64,6 +72,17 @@ const getLocalDateStr = (d = new Date()) => {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
+
+const getSetupRules = (setup?: SetupDefinition) => {
+  if (!setup) return [];
+  return [
+    ...setup.entryRules,
+    ...setup.invalidationRules,
+    ...setup.managementRules,
+  ];
+};
+
+const setupRuleKey = (index: number) => `setup-rule-${index}`;
 
 const format12HourTime = (timeStr?: string) => {
   if (!timeStr) return '';
@@ -98,6 +117,7 @@ const MOCK_JOURNAL_SCREENSHOTS = [
 export default function JournalView({
   trades,
   accounts,
+  setups,
   selectedAccountId,
   journalRules,
   onAddRule,
@@ -163,6 +183,7 @@ export default function JournalView({
   const [time, setTime] = useState('');
   const [asset, setAsset] = useState('XAUUSD');
   const [setup, setSetup] = useState('BoS Downside');
+  const [setupId, setSetupId] = useState<string | undefined>(undefined);
   const [direction, setDirection] = useState<'BUY' | 'SELL'>('SELL');
   const [entryPrice, setEntryPrice] = useState('');
   const [exitPrice, setExitPrice] = useState('');
@@ -178,6 +199,7 @@ export default function JournalView({
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
   const [notes, setNotes] = useState('');
   const [formChecklist, setFormChecklist] = useState<Record<string, boolean>>({});
+  const [setupRuleChecks, setSetupRuleChecks] = useState<Record<string, boolean>>({});
   const [formJournalingStatus, setFormJournalingStatus] = useState<'COMPLETE' | 'PENDING'>('PENDING');
 
   // Custom Mistakes State & Handlers
@@ -287,6 +309,11 @@ export default function JournalView({
     if (prefillTrade) {
       setAsset(prefillTrade.asset || 'XAUUSD');
       setSetup(prefillTrade.setup || 'BoS Downside');
+      const matchedSetup = prefillTrade.setupId
+        ? setups.find(item => item.id === prefillTrade.setupId)
+        : setups.find(item => item.name.toLowerCase() === (prefillTrade.setup || '').toLowerCase());
+      setSetupId(matchedSetup?.id);
+      setSetupRuleChecks(prefillTrade.setupRuleChecks || {});
       setDirection(prefillTrade.direction || 'SELL');
       setDate(getLocalDateStr());
       setTime(new Date().toTimeString().slice(0, 5));
@@ -295,10 +322,30 @@ export default function JournalView({
       setShowForm(true);
       setEditingId(null);
     }
-  }, [prefillTrade]);
+  }, [prefillTrade, setups]);
 
   const currentFormAccount = accounts.find(a => a.id === accountId);
+  const selectedSetupDefinition = setupId ? setups.find(item => item.id === setupId) : undefined;
+  const editingTrade = editingId ? trades.find(trade => trade.id === editingId) : undefined;
+  const preservesHistoricalSetupSnapshot = Boolean(
+    editingTrade?.setupRuleSnapshot?.length &&
+    ((editingTrade.setupId && editingTrade.setupId === setupId) ||
+      (!editingTrade.setupId && !setupId && editingTrade.setup.trim().toLowerCase() === setup.trim().toLowerCase())),
+  );
+  const playbookRulesForForm = preservesHistoricalSetupSnapshot
+    ? editingTrade?.setupRuleSnapshot || []
+    : getSetupRules(selectedSetupDefinition);
+  const playbookChecklistTarget = preservesHistoricalSetupSnapshot
+    ? editingTrade?.setupMinChecklistScore
+    : selectedSetupDefinition?.minChecklistScore;
   const accountFeeRate = currentFormAccount?.commissionPerLot !== undefined ? currentFormAccount.commissionPerLot : 7;
+  const formCommission = commission === ''
+    ? (parseFloat(size) || 0) * accountFeeRate
+    : Math.abs(parseFloat(commission) || 0);
+  const formSwap = Math.abs(parseFloat(swap) || 0);
+  const formOtherFees = Math.abs(parseFloat(fee) || 0);
+  const formTotalFees = formCommission + formSwap + formOtherFees;
+  const formNetPnl = (parseFloat(pnl) || 0) - formTotalFees;
 
   const handleAccountChange = (newAccId: string) => {
     setAccountId(newAccId);
@@ -337,11 +384,13 @@ export default function JournalView({
     setSl('');
     setTp('');
     setPnl('');
+    setSetupId(setups.find(item => item.status === 'ACTIVE' && item.name.toLowerCase() === setup.toLowerCase())?.id);
     setNotes('');
     setHtfScreenshot('');
     setLtfScreenshot('');
     setSelectedMistakes(['None']);
     setFormChecklist({});
+    setSetupRuleChecks({});
     setFormJournalingStatus('COMPLETE');
     if (selectedAccountId !== 'ALL') {
       setAccountId(selectedAccountId);
@@ -366,6 +415,7 @@ export default function JournalView({
     setTime(trade.time);
     setAsset(trade.asset);
     setSetup(trade.setup);
+    setSetupId(trade.setupId || setups.find(item => item.name.toLowerCase() === trade.setup.toLowerCase())?.id);
     setDirection(trade.direction);
     setEntryPrice(trade.entryPrice.toString());
     setExitPrice(trade.exitPrice.toString());
@@ -384,6 +434,7 @@ export default function JournalView({
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
     setFormChecklist(trade.checklist || {});
+    setSetupRuleChecks(trade.setupRuleChecks || {});
     setFormJournalingStatus('COMPLETE');
     setShowForm(true);
   };
@@ -408,6 +459,14 @@ export default function JournalView({
     setFormChecklist(prev => ({
       ...prev,
       [ruleId]: !prev[ruleId]
+    }));
+  };
+
+  const handleToggleSetupRule = (index: number) => {
+    const key = setupRuleKey(index);
+    setSetupRuleChecks(prev => ({
+      ...prev,
+      [key]: !prev[key]
     }));
   };
 
@@ -502,13 +561,25 @@ export default function JournalView({
     const maxScore = journalRules.length;
     const isEvaluated = Object.keys(formChecklist).length > 0;
 
-    const existingTrade = editingId ? trades.find(t => t.id === editingId) : null;
+    const existingTrade = editingTrade || null;
     const parsedSize = parseFloat(size) || 1;
-    const parsedCommission = commission !== '' ? parseFloat(commission) : (parsedSize * 7);
-    const parsedSwap = parseFloat(swap) || 0;
-    const parsedFee = parseFloat(fee) || 0;
+    const parsedCommission = commission !== '' ? Math.abs(parseFloat(commission) || 0) : (parsedSize * accountFeeRate);
+    const parsedSwap = Math.abs(parseFloat(swap) || 0);
+    const parsedFee = Math.abs(parseFloat(fee) || 0);
 
     const targetAccId = accountId || (selectedAccountId !== 'ALL' ? selectedAccountId : (accounts[0]?.id || 'acc-1'));
+
+    // Preserve a previously logged rule snapshot while editing the same trade.
+    // A later playbook edit must not rewrite the meaning of old executions.
+    const setupRuleSnapshot = preservesHistoricalSetupSnapshot
+      ? existingTrade?.setupRuleSnapshot || []
+      : getSetupRules(selectedSetupDefinition);
+    const hasSetupRuleEvaluation = Object.keys(setupRuleChecks).length > 0;
+    const recordedSetupRuleScore = hasSetupRuleEvaluation
+      ? setupRuleSnapshot.filter((_, index) => setupRuleChecks[setupRuleKey(index)]).length
+      : preservesHistoricalSetupSnapshot
+        ? existingTrade?.setupRuleScore
+        : undefined;
 
     const finalTrade = {
       accountId: targetAccId,
@@ -516,6 +587,25 @@ export default function JournalView({
       time,
       asset: asset.toUpperCase().trim(),
       setup,
+      setupId,
+      setupRuleSnapshot: setupRuleSnapshot.length ? setupRuleSnapshot : undefined,
+      setupRuleChecks: hasSetupRuleEvaluation
+        ? setupRuleChecks
+        : preservesHistoricalSetupSnapshot
+          ? existingTrade?.setupRuleChecks
+          : undefined,
+      setupRuleScore: recordedSetupRuleScore,
+      setupRuleMaxScore: recordedSetupRuleScore === undefined
+        ? preservesHistoricalSetupSnapshot
+          ? existingTrade?.setupRuleMaxScore
+          : undefined
+        : setupRuleSnapshot.length,
+      setupMinChecklistScore: preservesHistoricalSetupSnapshot
+        ? existingTrade?.setupMinChecklistScore
+        : selectedSetupDefinition?.minChecklistScore,
+      setupMaxTradesPerDay: preservesHistoricalSetupSnapshot
+        ? existingTrade?.setupMaxTradesPerDay
+        : selectedSetupDefinition?.maxTradesPerDay,
       direction,
       entryPrice: parseFloat(entryPrice) || 0,
       exitPrice: parseFloat(exitPrice) || 0,
@@ -570,19 +660,48 @@ export default function JournalView({
     }
   };
 
-  // Export CSV
-  const handleExportCSV = () => {
-    const headers = 'ID,AccountID,Date,Time,Asset,Setup,Direction,Entry,Exit,Size,Stop Loss,Take Profit,PnL,Status,Session,Mistakes,Notes,HTF_Screenshot,LTF_Screenshot\n';
-    const rows = trades.map(t => 
-      `"${t.id}","${t.accountId}","${t.date}","${t.time}","${t.asset}","${t.setup}","${t.direction}",${t.entryPrice},${t.exitPrice},${t.size},${t.sl},${t.tp},${t.pnl},"${t.status}","${t.session}","${t.mistakes.join(';') || 'None'}","${t.notes.replace(/"/g, '""')}","${t.htfScreenshot || ''}","${t.ltfScreenshot || ''}"`
-    ).join('\n');
-    
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+  const escapeCSV = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadFile = (content: string, filename: string, type: string) => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Trading_Journal_Backup_${getLocalDateStr()}.csv`);
+    link.download = filename;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // Export a spreadsheet-friendly snapshot, including the net values used by the app.
+  const handleExportCSV = () => {
+    const headers = [
+      'ID', 'AccountID', 'Date', 'Time', 'Asset', 'Setup', 'Setup ID', 'Direction', 'Entry', 'Exit', 'Size',
+      'Stop Loss', 'Take Profit', 'Gross PnL', 'Commission', 'Swap', 'Other Fees', 'Total Fees',
+      'Net PnL', 'Status', 'Session', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot'
+    ];
+    const rows = trades.map(t => [
+      t.id, t.accountId, t.date, t.time, t.asset, t.setup, t.setupId || '', t.direction, t.entryPrice, t.exitPrice, t.size,
+      t.sl, t.tp, t.pnl, t.commission ?? '', t.swap ?? '', t.fee ?? '', getTradeTotalFees(t),
+      getTradeNetPnl(t), t.status, t.session, t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
+      t.htfScreenshot || '', t.ltfScreenshot || ''
+    ].map(escapeCSV).join(','));
+
+    downloadFile(
+      `\uFEFF${headers.map(escapeCSV).join(',')}\n${rows.join('\n')}`,
+      `Trading_Journal_${getLocalDateStr()}.csv`,
+      'text/csv;charset=utf-8;'
+    );
+  };
+
+  // JSON preserves all linked playbooks as well as every journal field.
+  const handleExportJSON = () => {
+    downloadFile(
+      JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), trades, setups }, null, 2),
+      `Trading_Journal_Backup_${getLocalDateStr()}.json`,
+      'application/json;charset=utf-8;'
+    );
   };
 
   // Import Backup JSON
@@ -593,23 +712,31 @@ export default function JournalView({
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (Array.isArray(parsed)) {
-          const isValid = parsed.every(item => item.asset && item.pnl !== undefined && item.date);
-          if (isValid) {
-            onImportBackup(parsed);
-            alert(`Imported ${parsed.length} trades successfully.`);
-          } else {
-            alert('Invalid backup structure.');
-          }
+        const parsedFile = JSON.parse(event.target?.result as string);
+        // Accept legacy array backups as well as the named export format. A
+        // v2 backup can contain only playbooks, which is useful before a new
+        // trader has any executions to restore.
+        const hasTradeArray = Array.isArray(parsedFile) || Array.isArray(parsedFile?.trades);
+        const parsed = Array.isArray(parsedFile) ? parsedFile : Array.isArray(parsedFile?.trades) ? parsedFile.trades : [];
+        const parsedSetups = Array.isArray(parsedFile?.setups) ? parsedFile.setups : [];
+        const validTrades = hasTradeArray && parsed.every(item => item && item.asset && item.pnl !== undefined && item.date);
+        const validSetups = parsedSetups.every(item => item && item.id && item.name);
+        if ((parsed.length > 0 || parsedSetups.length > 0) && validTrades && validSetups) {
+          const result = onImportBackup(parsed, parsedSetups);
+          const setupDetail = parsedSetups.length > 0
+            ? ` ${result.setupsAdded || 0} playbooks added and ${result.setupsUpdated || 0} updated.`
+            : '';
+          alert(`Backup restored: ${result.added} trades added, ${result.updated} updated. Your journal now contains ${result.total} trades.${setupDetail}`);
         } else {
-          alert('Backup must be an array of trades.');
+          alert('Backup must contain valid TradeForge trades or setup playbooks. Nothing was changed.');
         }
       } catch (err) {
         alert('Failed to parse file as JSON.');
       }
     };
     reader.readAsText(file);
+    // Let the user select the same backup again if needed.
+    e.target.value = '';
   };
 
   const getIsTradeCompleted = (t: Trade) => {
@@ -690,6 +817,14 @@ export default function JournalView({
   // Unique elements for filter dropdowns
   const uniqueAssets = Array.from(new Set(trades.map(t => t.asset)));
   const uniqueSetups = Array.from(new Set(trades.map(t => t.setup)));
+  const filteredNetPnl = sortedTrades.reduce((total, trade) => total + getTradeNetPnl(trade), 0);
+  const bestFilteredTrade = sortedTrades.reduce<Trade | null>((best, trade) =>
+    !best || getTradeNetPnl(trade) > getTradeNetPnl(best) ? trade : best,
+    null
+  );
+  const filteredCompletionRate = sortedTrades.length
+    ? Math.round((sortedTrades.filter(getIsTradeCompleted).length / sortedTrades.length) * 100)
+    : 0;
 
   return (
     <div className="space-y-8" id="journal-tab">
@@ -743,15 +878,24 @@ export default function JournalView({
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer"
-            title="Download CSV"
+            title="Download a spreadsheet-ready CSV"
           >
             <FileSpreadsheet size={14} />
             Export CSV
           </button>
+
+          <button
+            onClick={handleExportJSON}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-emerald-200 hover:bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer"
+            title="Download a complete journal backup that can be imported later"
+          >
+            <Download size={14} />
+            Backup JSON
+          </button>
           
           <label className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer hover:border-slate-350">
             <Upload size={14} />
-            Import Backup
+            Restore JSON
             <input 
               type="file" 
               accept=".json" 
@@ -815,6 +959,28 @@ export default function JournalView({
           )}
         </div>
       )}
+
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3" aria-label="Journal snapshot">
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-3xs">
+          <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-400">Visible net P&amp;L</span>
+          <p className={`mt-1 font-mono text-lg font-black ${filteredNetPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+            {filteredNetPnl >= 0 ? '+' : ''}${filteredNetPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="mt-1 text-3xs text-slate-500">After commissions and logged fees</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-3xs">
+          <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-400">Journal completion</span>
+          <p className="mt-1 font-mono text-lg font-black text-slate-800">{filteredCompletionRate}%</p>
+          <p className="mt-1 text-3xs text-slate-500">{sortedTrades.filter(getIsTradeCompleted).length} of {sortedTrades.length} visible trades reviewed</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-3xs">
+          <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-400">Best visible trade</span>
+          <p className="mt-1 font-mono text-lg font-black text-slate-800">
+            {bestFilteredTrade ? `${bestFilteredTrade.asset} · +$${Math.max(0, getTradeNetPnl(bestFilteredTrade)).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+          </p>
+          <p className="mt-1 text-3xs text-slate-500">Use filters to compare setups and sessions</p>
+        </div>
+      </section>
 
       {/* Logging Form (Add / Edit) */}
       {showForm && (
@@ -887,19 +1053,33 @@ export default function JournalView({
 
             {/* Row 2 */}
             <div>
-              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">Setup Name</label>
-              <select
+              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">Setup / Playbook</label>
+              <input
+                type="text"
                 value={setup}
-                onChange={(e) => setSetup(e.target.value)}
+                list="setup-playbook-options"
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSetup(value);
+                  setSetupId(setups.find(item => item.name.toLowerCase() === value.trim().toLowerCase())?.id);
+                  setSetupRuleChecks({});
+                }}
+                placeholder="Choose or type a legacy/custom setup"
                 className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium text-slate-800"
-              >
-                <option value="BoS Downside">BoS Downside</option>
-                <option value="EMA Rejection">EMA Rejection</option>
-                <option value="Highs Rejection">Highs Rejection</option>
-                <option value="Liquidity Sweep">Liquidity Sweep</option>
-                <option value="Double Top/Bottom">Double Top/Bottom</option>
-                <option value="Order Block Retest">Order Block Retest</option>
-              </select>
+                required
+              />
+              <datalist id="setup-playbook-options">
+                {setups.filter(item => item.status === 'ACTIVE' || item.id === setupId).map(item => (
+                  <option key={item.id} value={item.name}>{item.status === 'ARCHIVED' ? 'Archived playbook' : 'Playbook'}</option>
+                ))}
+              </datalist>
+              {selectedSetupDefinition ? (
+                <p className="mt-1.5 text-4xs leading-relaxed text-violet-700 font-sans">
+                  Linked to playbook · {selectedSetupDefinition.entryRules.length} entry rules · target checklist {selectedSetupDefinition.minChecklistScore ?? 'not set'}
+                </p>
+              ) : (
+                <p className="mt-1.5 text-4xs leading-relaxed text-slate-400 font-sans">Type any legacy or custom setup name, or choose an active playbook.</p>
+              )}
             </div>
 
             <div>
@@ -1094,22 +1274,88 @@ export default function JournalView({
                 <div>
                   <span className="text-amber-600 text-[10px] block uppercase">Total Fees</span>
                   <span className="font-bold text-amber-700">
-                    -${((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0)).toFixed(2)}
+                    -${formTotalFees.toFixed(2)}
                   </span>
                 </div>
               </div>
               <div className="text-right border-l pl-4 border-amber-200">
                 <span className="text-emerald-600 text-[10px] block uppercase font-bold">Net Realized PnL (Equity Impact)</span>
                 <span className={`font-black text-sm ${
-                  ((parseFloat(pnl) || 0) - ((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0))) >= 0
+                  formNetPnl >= 0
                     ? 'text-emerald-600'
                     : 'text-rose-600'
                 }`}>
-                  ${(((parseFloat(pnl) || 0) - ((parseFloat(commission) || ((parseFloat(size) || 1) * 7)) + (parseFloat(swap) || 0) + (parseFloat(fee) || 0)))).toFixed(2)}
+                  ${formNetPnl.toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
+
+          {selectedSetupDefinition && (
+            <div className="rounded-2xl border border-violet-200/80 bg-violet-50/50 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-violet-900">{selectedSetupDefinition.name} playbook guardrails</p>
+                  <p className="mt-0.5 text-3xs text-violet-700">These rules are snapshotted with this trade when you save it.</p>
+                </div>
+                <div className="flex gap-1.5 text-4xs font-bold uppercase">
+                  {selectedSetupDefinition.riskPerTrade !== undefined && <span className="rounded bg-white px-2 py-1 text-violet-700 border border-violet-200">Risk: {selectedSetupDefinition.riskPerTrade}%</span>}
+                  {selectedSetupDefinition.maxTradesPerDay !== undefined && <span className="rounded bg-white px-2 py-1 text-violet-700 border border-violet-200">Max: {selectedSetupDefinition.maxTradesPerDay}/day</span>}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {[
+                  ['Entry', selectedSetupDefinition.entryRules],
+                  ['Invalidation', selectedSetupDefinition.invalidationRules],
+                  ['Management', selectedSetupDefinition.managementRules]
+                ].map(([label, rules]) => (
+                  <div key={label as string} className="rounded-xl border border-violet-100 bg-white/80 p-3">
+                    <p className="text-4xs font-black uppercase tracking-wider text-violet-600">{label as string}</p>
+                    <ul className="mt-1.5 space-y-1 text-3xs leading-relaxed text-slate-600">
+                      {(rules as string[]).slice(0, 3).map((rule, index) => <li key={index}>• {rule}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedSetupDefinition && playbookRulesForForm.length > 0 && (
+            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/45 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-900">Playbook rule check</p>
+                  <p className="mt-0.5 text-3xs text-emerald-700">Mark what was true for this execution. This score is tracked separately from the journal checklist and remains tied to this trade&apos;s rule snapshot.</p>
+                </div>
+                <div className="flex items-center gap-2 text-3xs font-bold">
+                  <span className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-emerald-800">
+                    {playbookRulesForForm.filter((_, index) => setupRuleChecks[setupRuleKey(index)]).length} / {playbookRulesForForm.length} rules met
+                  </span>
+                  {playbookChecklistTarget !== undefined && (
+                    <span className={`rounded-lg border px-2.5 py-1 ${playbookRulesForForm.filter((_, index) => setupRuleChecks[setupRuleKey(index)]).length >= playbookChecklistTarget ? 'border-emerald-200 bg-emerald-100 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      {playbookRulesForForm.filter((_, index) => setupRuleChecks[setupRuleKey(index)]).length >= playbookChecklistTarget ? 'Quality gate met' : `Gate: ${playbookChecklistTarget}`}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {playbookRulesForForm.map((rule, index) => {
+                  const checked = Boolean(setupRuleChecks[setupRuleKey(index)]);
+                  return (
+                    <label key={`${rule}-${index}`} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-2.5 text-2xs transition ${checked ? 'border-emerald-500 bg-emerald-600 text-white shadow-xs' : 'border-emerald-100 bg-white/85 text-slate-700 hover:border-emerald-300'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleToggleSetupRule(index)}
+                        className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="leading-relaxed">{rule}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Screenshot Attachments (HTF and LTF) with Drag & Drop, File Upload, Paste & Permanent Storage */}
           <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-3">

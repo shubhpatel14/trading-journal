@@ -27,8 +27,8 @@ import {
   Heart,
   Brain
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation } from './types';
-import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_DISCIPLINE_SETTINGS, INITIAL_DISCIPLINE_RECORDS, INITIAL_DISCIPLINE_VIOLATIONS } from './mockData';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation, SetupDefinition } from './types';
+import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_DISCIPLINE_SETTINGS, INITIAL_DISCIPLINE_RECORDS, INITIAL_DISCIPLINE_VIOLATIONS, DEFAULT_SETUP_DEFINITIONS } from './mockData';
 
 // Import Firebase config & helpers
 import {
@@ -66,6 +66,7 @@ const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
 const ReviewView = React.lazy(() => import('./components/ReviewView'));
 const DisciplineCoachView = React.lazy(() => import('./components/DisciplineCoachView'));
+const SetupLibraryView = React.lazy(() => import('./components/SetupLibraryView'));
 
 const ViewLoadingFallback = () => (
   <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
@@ -356,6 +357,120 @@ export default function App() {
     return DEFAULT_JOURNAL_RULES;
   });
 
+  // Reusable setup playbooks. Trades hold an optional stable setupId, while the
+  // visible setup name remains a historical snapshot for legacy imports.
+  const [setupDefinitions, setSetupDefinitions] = useState<SetupDefinition[]>(() => {
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_SETUP_DEFINITIONS') : sessionStorage.getItem('TRADEPLAN_GUEST_SETUP_DEFINITIONS');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return DEFAULT_SETUP_DEFINITIONS;
+  });
+
+  const makeSetupId = () => (
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `setup-${crypto.randomUUID()}`
+      : `setup-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+
+  const handleAddSetup = async (setup: Omit<SetupDefinition, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const normalizedName = setup.name.trim();
+    if (!normalizedName) return;
+    if (setupDefinitions.some(item => item.name.trim().toLowerCase() === normalizedName.toLowerCase())) {
+      setAuthError(`A setup named "${normalizedName}" already exists. Choose a distinct playbook name.`);
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const newSetup: SetupDefinition = {
+      ...setup,
+      id: makeSetupId(),
+      name: normalizedName,
+      description: setup.description.trim(),
+      preferredAssets: setup.preferredAssets.map(value => value.trim().toUpperCase()).filter(Boolean),
+      marketConditions: setup.marketConditions.trim(),
+      entryRules: setup.entryRules.map(value => value.trim()).filter(Boolean),
+      invalidationRules: setup.invalidationRules.map(value => value.trim()).filter(Boolean),
+      managementRules: setup.managementRules.map(value => value.trim()).filter(Boolean),
+      tags: setup.tags.map(value => value.trim()).filter(Boolean),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    setSetupDefinitions(prev => [newSetup, ...prev]);
+    if (user && db && !isDemoUser) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'setups', newSetup.id), cleanForFirestore(newSetup));
+      } catch (error) {
+        setAuthError('The setup was saved locally, but cloud sync could not be completed.');
+        console.error('Setup cloud create failed:', error);
+      }
+    }
+  };
+
+  const handleUpdateSetup = async (id: string, update: Partial<SetupDefinition>) => {
+    const existing = setupDefinitions.find(item => item.id === id);
+    if (!existing) return;
+    const nextName = update.name?.trim() || existing.name;
+    if (setupDefinitions.some(item => item.id !== id && item.name.trim().toLowerCase() === nextName.toLowerCase())) {
+      setAuthError(`A setup named "${nextName}" already exists. Choose a distinct playbook name.`);
+      return;
+    }
+    const nextSetup: SetupDefinition = {
+      ...existing,
+      ...update,
+      name: nextName,
+      preferredAssets: update.preferredAssets ? update.preferredAssets.map(value => value.trim().toUpperCase()).filter(Boolean) : existing.preferredAssets,
+      entryRules: update.entryRules ? update.entryRules.map(value => value.trim()).filter(Boolean) : existing.entryRules,
+      invalidationRules: update.invalidationRules ? update.invalidationRules.map(value => value.trim()).filter(Boolean) : existing.invalidationRules,
+      managementRules: update.managementRules ? update.managementRules.map(value => value.trim()).filter(Boolean) : existing.managementRules,
+      tags: update.tags ? update.tags.map(value => value.trim()).filter(Boolean) : existing.tags,
+      updatedAt: new Date().toISOString(),
+    };
+    setSetupDefinitions(prev => prev.map(item => item.id === id ? nextSetup : item));
+    if (user && db && !isDemoUser) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'setups', id), cleanForFirestore(nextSetup));
+      } catch (error) {
+        setAuthError('The setup update was saved locally, but cloud sync could not be completed.');
+        console.error('Setup cloud update failed:', error);
+      }
+    }
+  };
+
+  const handleArchiveSetup = (id: string) => handleUpdateSetup(id, { status: 'ARCHIVED' });
+
+  const handleDeleteSetup = async (id: string) => {
+    const targetSetup = setupDefinitions.find(setup => setup.id === id);
+    const normalizedSetupName = targetSetup?.name.trim().toLowerCase();
+    // Protect legacy journals as well as new stable-id links.  Old trades can
+    // still be resolved by their historical setup name, so deleting that
+    // playbook would make the evidence harder to interpret.
+    const linkedTrades = trades.filter(trade =>
+      trade.setupId === id ||
+      (!trade.setupId && Boolean(normalizedSetupName) && trade.setup.trim().toLowerCase() === normalizedSetupName)
+    ).length;
+    const linkedPlans = plans.filter(plan => plan.setupId === id).length;
+    if (linkedTrades || linkedPlans) {
+      setAuthError(`This setup is linked to ${linkedTrades} trade${linkedTrades === 1 ? '' : 's'} and ${linkedPlans} plan${linkedPlans === 1 ? '' : 's'}. Archive it to preserve the history.`);
+      return;
+    }
+    if (!window.confirm('Delete this unused setup playbook? This cannot be undone.')) return;
+    setSetupDefinitions(prev => prev.filter(item => item.id !== id));
+    if (user && db && !isDemoUser) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'setups', id));
+      } catch (error) {
+        setAuthError('The setup was removed locally, but cloud sync could not be completed.');
+        console.error('Setup cloud delete failed:', error);
+      }
+    }
+  };
+
   const handleAddJournalRule = async (rule: Omit<JournalRule, 'id'>) => {
     const newRule: JournalRule = {
       ...rule,
@@ -480,18 +595,20 @@ export default function App() {
 
   // Prefilled state for executing plans
   const [prefillTrade, setPrefillTrade] = useState<Partial<Trade> | null>(null);
+  const [prefillPlanSetup, setPrefillPlanSetup] = useState<SetupDefinition | null>(null);
 
   // Permanent IndexedDB Initialization Effect on Mount
   useEffect(() => {
     async function loadFromIndexedDB() {
       try {
-        const [idbTrades, idbPlans, idbAccounts, idbDaily, idbWeekly, idbRules] = await Promise.all([
+        const [idbTrades, idbPlans, idbAccounts, idbDaily, idbWeekly, idbRules, idbSetups] = await Promise.all([
           getAllIDB<Trade>(STORES.TRADES),
           getAllIDB<TradePlan>(STORES.PLANS),
           getAllIDB<TradingAccount>(STORES.ACCOUNTS),
           getAllIDB<DailyReview>(STORES.DAILY_REVIEWS),
           getAllIDB<WeeklyReview>(STORES.WEEKLY_REVIEWS),
           getAllIDB<JournalRule>(STORES.JOURNAL_RULES),
+          getAllIDB<SetupDefinition>(STORES.SETUPS),
         ]);
 
         if (idbTrades.length > 0) {
@@ -518,6 +635,12 @@ export default function App() {
         if (idbDaily.length > 0) setDailyReviews(idbDaily);
         if (idbWeekly.length > 0) setWeeklyReviews(idbWeekly);
         if (idbRules.length > 0) setJournalRules(idbRules);
+        if (idbSetups.length > 0) {
+          setSetupDefinitions(idbSetups);
+        } else if (DEFAULT_SETUP_DEFINITIONS.length > 0) {
+          await saveAllIDB(STORES.SETUPS, DEFAULT_SETUP_DEFINITIONS);
+          setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
+        }
       } catch (err) {
         console.error("Failed to initialize state from IndexedDB:", err);
       }
@@ -611,6 +734,16 @@ export default function App() {
     }
   }, [journalRules, isDemoUser]);
 
+  // Synchronize Setup Playbooks
+  useEffect(() => {
+    saveAllIDB(STORES.SETUPS, setupDefinitions);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_SETUP_DEFINITIONS', JSON.stringify(setupDefinitions));
+    } else {
+      localStorage.setItem('TRADEPLAN_SETUP_DEFINITIONS', JSON.stringify(setupDefinitions));
+    }
+  }, [setupDefinitions, isDemoUser]);
+
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
     if (!isFirebaseConfigured || !db) return;
@@ -641,7 +774,15 @@ export default function App() {
         loadedPlans.push({ id: docSnap.id, ...docSnap.data() } as TradePlan);
       });
 
-      // 4. Fetch daily_reviews
+      // 4. Fetch reusable setup playbooks
+      const setupsRef = collection(db, 'users', userId, 'setups');
+      const setupsSnap = await getDocs(setupsRef);
+      const loadedSetups: SetupDefinition[] = [];
+      setupsSnap.forEach(docSnap => {
+        loadedSetups.push({ id: docSnap.id, ...docSnap.data() } as SetupDefinition);
+      });
+
+      // 5. Fetch daily_reviews
       const dailyRevRef = collection(db, 'users', userId, 'daily_reviews');
       const dailyRevSnap = await getDocs(dailyRevRef);
       let loadedDailyReviews: DailyReview[] = [];
@@ -649,7 +790,7 @@ export default function App() {
         loadedDailyReviews.push({ id: docSnap.id, ...docSnap.data() } as DailyReview);
       });
 
-      // 5. Fetch weekly_reviews
+      // 6. Fetch weekly_reviews
       const weeklyRevRef = collection(db, 'users', userId, 'weekly_reviews');
       const weeklyRevSnap = await getDocs(weeklyRevRef);
       let loadedWeeklyReviews: WeeklyReview[] = [];
@@ -721,6 +862,15 @@ export default function App() {
       } else if (plans.length > 0) {
         plans.forEach(p => {
           batch.set(doc(db, 'users', userId, 'plans', p.id), cleanForFirestore(p));
+        });
+        needsBatchCommit = true;
+      }
+
+      if (loadedSetups.length > 0) {
+        setSetupDefinitions(loadedSetups);
+      } else if (setupDefinitions.length > 0) {
+        setupDefinitions.forEach(setup => {
+          batch.set(doc(db, 'users', userId, 'setups', setup.id), cleanForFirestore(setup));
         });
         needsBatchCommit = true;
       }
@@ -800,10 +950,12 @@ export default function App() {
   }, []);
 
   // Real-time Firestore Sync Listener across devices & tabs
+  const hasReceivedSetupSnapshotRef = React.useRef(false);
   useEffect(() => {
     if (!user || !user.uid || !db || isDemoUser || !isFirebaseConfigured) return;
 
     const userId = user.uid;
+    hasReceivedSetupSnapshotRef.current = false;
 
     // Real-time listener for Trades
     const unsubTrades = onSnapshot(collection(db, 'users', userId, 'trades'), (snap) => {
@@ -857,11 +1009,27 @@ export default function App() {
       }
     }, (err) => console.warn("Realtime rules listener:", err.message));
 
+    // Setup playbooks are safe to archive and are synchronized independently of
+    // trade history. After the first snapshot, an empty remote collection is a
+    // real deletion and should be reflected locally.
+    const unsubSetups = onSnapshot(collection(db, 'users', userId, 'setups'), (snap) => {
+      const remoteSetups: SetupDefinition[] = [];
+      snap.forEach(docSnap => {
+        remoteSetups.push({ ...docSnap.data(), id: docSnap.id } as SetupDefinition);
+      });
+      if (remoteSetups.length > 0 || hasReceivedSetupSnapshotRef.current) {
+        setSetupDefinitions(remoteSetups);
+        saveAllIDB(STORES.SETUPS, remoteSetups);
+      }
+      hasReceivedSetupSnapshotRef.current = true;
+    }, (err) => console.warn("Realtime setups listener:", err.message));
+
     return () => {
       unsubTrades();
       unsubAccounts();
       unsubPlans();
       unsubRules();
+      unsubSetups();
     };
   }, [user?.uid, isDemoUser]);
 
@@ -982,6 +1150,7 @@ export default function App() {
     sessionStorage.removeItem('TRADEPLAN_GUEST_DAILY_REVIEWS');
     sessionStorage.removeItem('TRADEPLAN_GUEST_WEEKLY_REVIEWS');
     sessionStorage.removeItem('TRADEPLAN_GUEST_JOURNAL_RULES');
+    sessionStorage.removeItem('TRADEPLAN_GUEST_SETUP_DEFINITIONS');
 
     setUser(null);
     setIsDemoUser(false);
@@ -992,6 +1161,7 @@ export default function App() {
     setTrades(INITIAL_TRADES);
     setPlans(INITIAL_TRADE_PLANS);
     setJournalRules(DEFAULT_JOURNAL_RULES);
+    setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
     setDailyReviews([]);
     setWeeklyReviews([]);
     setSelectedAccountId('ALL');
@@ -1143,10 +1313,16 @@ export default function App() {
 
   // Execute plan action (pre-fills trade logger and redirects tab)
   const handleExecutePlan = (plan: TradePlan) => {
+    const linkedSetup = plan.setupId ? setupDefinitions.find(setup => setup.id === plan.setupId) : undefined;
     setPrefillTrade({
       asset: plan.asset,
-      setup: plan.triggers ? 'BoS Downside' : 'Highs Rejection',
-      direction: plan.bias === 'BULLISH' ? 'BUY' : 'SELL'
+      setupId: linkedSetup?.id,
+      setup: linkedSetup?.name || (plan.triggers ? 'BoS Downside' : 'Highs Rejection'),
+      direction: linkedSetup?.direction === 'BUY'
+        ? 'BUY'
+        : linkedSetup?.direction === 'SELL'
+          ? 'SELL'
+          : plan.bias === 'BULLISH' ? 'BUY' : 'SELL'
     });
     setCurrentTab('journal');
   };
@@ -1156,12 +1332,14 @@ export default function App() {
     if (window.confirm('Are you sure you want to reset all data back to the default Gold Spot / FX template? Your current custom logs will be overwritten.')) {
       setTrades(INITIAL_TRADES);
       setPlans(INITIAL_TRADE_PLANS);
+      setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
       setAccounts(INITIAL_ACCOUNTS);
       setSelectedAccountId('ALL');
       localStorage.removeItem('TRADEPLAN_TRADES');
       localStorage.removeItem('TRADEPLAN_PLANS');
       localStorage.removeItem('TRADEPLAN_ACCOUNTS');
       localStorage.removeItem('TRADEPLAN_SELECTED_ACCOUNT_ID');
+      localStorage.removeItem('TRADEPLAN_SETUP_DEFINITIONS');
       setCurrentTab('dashboard');
 
       if (user && db && !isDemoUser) {
@@ -1179,6 +1357,9 @@ export default function App() {
           INITIAL_TRADE_PLANS.forEach(p => {
             batch.set(doc(db, 'users', user.uid, 'plans', p.id), cleanForFirestore(p));
           });
+          DEFAULT_SETUP_DEFINITIONS.forEach(setup => {
+            batch.set(doc(db, 'users', user.uid, 'setups', setup.id), cleanForFirestore(setup));
+          });
 
           await batch.commit();
         } catch (e) {
@@ -1190,8 +1371,90 @@ export default function App() {
     }
   };
 
-  const handleImportBackup = (backupTrades: Trade[]) => {
-    setTrades(backupTrades);
+  const handleImportBackup = (backupTrades: Trade[], backupSetups: SetupDefinition[] = []) => {
+    // Imports are merged by id instead of replacing the current journal. This
+    // protects newer local work when a user restores an older backup file.
+    const existingById = new Map(trades.map(trade => [trade.id, trade]));
+    let updated = 0;
+    let added = 0;
+
+    const importedIds: string[] = [];
+    backupTrades.forEach((rawTrade, index) => {
+      const id = rawTrade.id || `import-${Date.now()}-${index}`;
+      importedIds.push(id);
+      if (existingById.has(id)) updated++;
+      else added++;
+
+      existingById.set(id, normalizeFirestoreTrade({
+        ...rawTrade,
+        id,
+        accountId: rawTrade.accountId || (selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id || 'acc-1'),
+        time: rawTrade.time || '00:00',
+        setup: rawTrade.setup || 'Imported trade',
+        direction: rawTrade.direction === 'BUY' ? 'BUY' : 'SELL',
+        entryPrice: Number(rawTrade.entryPrice) || 0,
+        exitPrice: Number(rawTrade.exitPrice) || 0,
+        size: Number(rawTrade.size) || 0,
+        sl: Number(rawTrade.sl) || 0,
+        tp: Number(rawTrade.tp) || 0,
+        pnl: Number(rawTrade.pnl) || 0,
+        status: rawTrade.status || 'BREAKEVEN',
+        session: rawTrade.session || 'NEW YORK',
+      }));
+    });
+
+    const mergedTrades = Array.from(existingById.values());
+    setTrades(mergedTrades);
+
+    const existingSetupsById = new Map<string, SetupDefinition>(setupDefinitions.map(setup => [setup.id, setup]));
+    let setupsAdded = 0;
+    let setupsUpdated = 0;
+    backupSetups.forEach(rawSetup => {
+      if (!rawSetup?.id || !rawSetup?.name) return;
+      if (existingSetupsById.has(rawSetup.id)) setupsUpdated++;
+      else setupsAdded++;
+      existingSetupsById.set(rawSetup.id, {
+        ...rawSetup,
+        name: rawSetup.name.trim(),
+        preferredAssets: Array.isArray(rawSetup.preferredAssets) ? rawSetup.preferredAssets : [],
+        preferredSessions: Array.isArray(rawSetup.preferredSessions) ? rawSetup.preferredSessions : [],
+        entryRules: Array.isArray(rawSetup.entryRules) ? rawSetup.entryRules : [],
+        invalidationRules: Array.isArray(rawSetup.invalidationRules) ? rawSetup.invalidationRules : [],
+        managementRules: Array.isArray(rawSetup.managementRules) ? rawSetup.managementRules : [],
+        tags: Array.isArray(rawSetup.tags) ? rawSetup.tags : [],
+        status: rawSetup.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+        createdAt: rawSetup.createdAt || new Date().toISOString(),
+        updatedAt: rawSetup.updatedAt || new Date().toISOString(),
+      });
+    });
+    const mergedSetups = Array.from(existingSetupsById.values());
+    if (backupSetups.length > 0) setSetupDefinitions(mergedSetups);
+
+    // Keep a signed-in journal portable: the local restore is immediate and the
+    // imported records are also written back to the user's cloud collection.
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      const cloudWrites: Promise<unknown>[] = importedIds.map(id => {
+        const trade = existingById.get(id);
+        return trade
+          ? setDoc(doc(db, 'users', user.uid, 'trades', id), cleanForFirestore(trade))
+          : Promise.resolve();
+      });
+      backupSetups.forEach(setup => {
+        const normalizedSetup = existingSetupsById.get(setup.id);
+        if (normalizedSetup) {
+          cloudWrites.push(setDoc(doc(db, 'users', user.uid, 'setups', normalizedSetup.id), cleanForFirestore(normalizedSetup)));
+        }
+      });
+      void Promise.all(cloudWrites)
+        .catch(error => {
+          console.error('Backup cloud sync failed:', error);
+          setAuthError('Backup restored locally, but its cloud sync could not be completed.');
+        })
+        .finally(() => setIsCloudSyncing(false));
+    }
+
+    return { added, updated, total: mergedTrades.length, setupsAdded, setupsUpdated, setupTotal: mergedSetups.length };
   };
 
   // Account Management handlers
@@ -1351,6 +1614,7 @@ export default function App() {
             <nav className="hidden lg:flex gap-1.5 xl:gap-2">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                { id: 'setups', label: 'Setup Library', icon: FolderOpen },
                 { id: 'plans', label: 'Setup Plans', icon: FileText },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
@@ -1370,6 +1634,7 @@ export default function App() {
                         setPrefillTrade(null);
                         setSelectedJournalDate(null);
                       }
+                      if (tab.id !== 'plans') setPrefillPlanSetup(null);
                     }}
                     className={`flex items-center gap-1.5 rounded-[20px] px-3 py-1.5 xl:px-3.5 xl:py-2 text-2xs xl:text-xs font-bold transition-all duration-200 cursor-pointer ${isActive
                       ? 'bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-clayButton active:scale-[0.92]'
@@ -1450,9 +1715,10 @@ export default function App() {
 
       {/* Mobile Fixed Bottom Dock Navigation */}
       <div className="mobile-bottom-dock lg:hidden">
-        <div className="flex justify-around items-center px-1 py-1.5">
+        <div className="flex min-w-max justify-around items-center px-1 py-1.5">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'setups', label: 'Setups', icon: FolderOpen },
             { id: 'plans', label: 'Plans', icon: FileText },
             { id: 'journal', label: 'Journal', icon: BookOpen },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
@@ -1471,6 +1737,7 @@ export default function App() {
                     setPrefillTrade(null);
                     setSelectedJournalDate(null);
                   }
+                  if (tab.id !== 'plans') setPrefillPlanSetup(null);
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all duration-200 cursor-pointer ${isActive
                   ? 'text-clay-accent scale-105 font-black'
@@ -1915,6 +2182,7 @@ export default function App() {
             <Dashboard
               trades={filteredTrades}
               plans={plans}
+              setups={setupDefinitions}
               onNavigate={(tab) => setCurrentTab(tab)}
               onExecutePlan={handleExecutePlan}
               onOpenNewTrade={() => {
@@ -1927,13 +2195,45 @@ export default function App() {
             />
           )}
 
+          {currentTab === 'setups' && (
+            <SetupLibraryView
+              setups={setupDefinitions}
+              trades={filteredTrades}
+              plans={plans}
+              onAddSetup={handleAddSetup}
+              onUpdateSetup={handleUpdateSetup}
+              onArchiveSetup={handleArchiveSetup}
+              onDeleteSetup={handleDeleteSetup}
+              onStartTrade={(setup) => {
+                setPrefillTrade({
+                  setupId: setup.id,
+                  setup: setup.name,
+                  asset: setup.preferredAssets[0] || 'XAUUSD',
+                  direction: setup.direction === 'BUY' ? 'BUY' : 'SELL'
+                });
+                setCurrentTab('journal');
+              }}
+              onStartPlan={(setup) => {
+                setPrefillPlanSetup(setup);
+                setCurrentTab('plans');
+              }}
+              getNetPnl={(trade) => {
+                const account = accounts.find(item => item.id === trade.accountId);
+                return getTradeNetPnl(trade, account?.commissionPerLot ?? 7);
+              }}
+            />
+          )}
+
           {currentTab === 'plans' && (
             <TradePlanView
               plans={plans}
+              setups={setupDefinitions}
               onAddPlan={handleAddPlan}
               onDeletePlan={handleDeletePlan}
               onArchivePlan={handleArchivePlan}
               onExecutePlan={handleExecutePlan}
+              prefillSetup={prefillPlanSetup}
+              onClearPrefillSetup={() => setPrefillPlanSetup(null)}
             />
           )}
 
@@ -1941,6 +2241,7 @@ export default function App() {
             <JournalView
               trades={filteredTrades}
               accounts={accounts}
+              setups={setupDefinitions}
               selectedAccountId={selectedAccountId}
               journalRules={journalRules}
               onAddRule={handleAddJournalRule}
@@ -1979,6 +2280,7 @@ export default function App() {
               trades={filteredTrades}
               selectedAccountId={selectedAccountId}
               accounts={accounts}
+              setups={setupDefinitions}
             />
           )}
 

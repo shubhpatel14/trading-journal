@@ -15,13 +15,14 @@ import {
   Zap,
   Coins
 } from 'lucide-react';
-import { Trade, TradePlan, PerformanceMetrics, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { Trade, TradePlan, PerformanceMetrics, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 
 import ForgeScoreCard from './ForgeScoreCard';
 
 interface DashboardProps {
   trades: Trade[];
   plans: TradePlan[];
+  setups?: SetupDefinition[];
   onNavigate: (tab: string) => void;
   onExecutePlan: (plan: TradePlan) => void;
   onOpenNewTrade: () => void;
@@ -89,6 +90,7 @@ function BiasBadge({ value }: { value: string }) {
 export default function Dashboard({
   trades,
   plans,
+  setups = [],
   onNavigate,
   onExecutePlan,
   onOpenNewTrade,
@@ -266,7 +268,7 @@ export default function Dashboard({
           note={
             <div className="space-y-0.5">
               <div>Initial: <span className="font-black text-clay-foreground">{formatValue(initialCapital, { decimals: 0 })}</span></div>
-              <div className="text-[10px] text-amber-600 font-bold">Fees Deducted: -{formatValue(metrics.totalFees || 0)} ($7/lot)</div>
+              <div className="text-[10px] text-amber-600 font-bold">Fees Deducted: -{formatValue(metrics.totalFees || 0)}</div>
             </div>
           }
           icon={metrics.totalPnl >= 0 ? TrendingUp : TrendingDown}
@@ -294,7 +296,7 @@ export default function Dashboard({
         <MetricCard
           label="Commissions & Fees"
           value={formatValue(metrics.totalFees || 0)}
-          note="Charged at $7/lot on FX & Gold."
+          note="Total broker costs recorded across these trades."
           icon={Coins}
           gradient="from-amber-300 to-[#F59E0B]"
         />
@@ -336,6 +338,11 @@ export default function Dashboard({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="clay-pill bg-white/90 font-mono text-clay-accent">{plan.asset}</span>
                       <BiasBadge value={plan.bias} />
+                      {plan.setupId && setups.find(setup => setup.id === plan.setupId) && (
+                        <span className="clay-pill bg-violet-100 text-violet-700 font-sans">
+                          {setups.find(setup => setup.id === plan.setupId)?.name}
+                        </span>
+                      )}
                     </div>
                     <span className="clay-pill bg-white/80 font-mono text-clay-muted">{plan.date}</span>
                   </div>
@@ -417,7 +424,8 @@ export default function Dashboard({
                   </div>
 
                   <div className="text-right space-y-2">
-                    <div className="font-display text-sm font-black text-clay-foreground">{formatValue(trade.pnl, { showSign: true, decimals: 0 })}</div>
+                    <div className="font-display text-sm font-black text-clay-foreground">{formatValue(getTradeNetPnl(trade), { showSign: true, decimals: 0 })}</div>
+                    <div className="text-[10px] font-bold text-clay-muted">Net P&amp;L</div>
                     <div className="clay-pill bg-white/80 text-3xs uppercase text-clay-muted">{trade.session}</div>
                   </div>
                 </div>

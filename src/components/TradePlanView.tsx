@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -16,14 +16,17 @@ import {
   X,
   Maximize2
 } from 'lucide-react';
-import { TradePlan, TimeframeAnalysis } from '../types';
+import { TradePlan, SetupDefinition } from '../types';
 
 interface TradePlanViewProps {
   plans: TradePlan[];
+  setups: SetupDefinition[];
   onAddPlan: (plan: Omit<TradePlan, 'id' | 'createdAt'>) => void;
   onDeletePlan: (id: string) => void;
   onArchivePlan: (id: string) => void;
   onExecutePlan: (plan: TradePlan) => void;
+  prefillSetup?: SetupDefinition | null;
+  onClearPrefillSetup?: () => void;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -42,10 +45,13 @@ const PREMIUM_MOCK_CHARTS = [
 
 export default function TradePlanView({
   plans,
+  setups,
   onAddPlan,
   onDeletePlan,
   onArchivePlan,
-  onExecutePlan
+  onExecutePlan,
+  prefillSetup,
+  onClearPrefillSetup
 }: TradePlanViewProps) {
   // Current Date filter for Daily changing structure
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -53,6 +59,7 @@ export default function TradePlanView({
   });
 
   const [asset, setAsset] = useState('XAUUSD');
+  const [setupId, setSetupId] = useState('');
   const [bias, setBias] = useState<'BULLISH' | 'BEARISH' | 'NEUTRAL'>('BEARISH');
   
   // Timeframe analyses state
@@ -83,6 +90,20 @@ export default function TradePlanView({
 
   // Lightbox Modal state
   const [activeLightboxImg, setActiveLightboxImg] = useState<string | null>(null);
+
+  const activeSetups = setups.filter(setup => setup.status === 'ACTIVE');
+  const selectedSetup = setups.find(setup => setup.id === setupId);
+
+  useEffect(() => {
+    if (!prefillSetup) return;
+    setSetupId(prefillSetup.id);
+    if (prefillSetup.preferredAssets[0]) setAsset(prefillSetup.preferredAssets[0]);
+    if (prefillSetup.direction === 'BUY') setBias('BULLISH');
+    if (prefillSetup.direction === 'SELL') setBias('BEARISH');
+    setTriggers(prev => prev || prefillSetup.entryRules.join('. '));
+    setShowForm(true);
+    onClearPrefillSetup?.();
+  }, [prefillSetup, onClearPrefillSetup]);
 
   // Helper to adjust the selected date day by day
   const handleAdjustDate = (days: number) => {
@@ -126,6 +147,7 @@ export default function TradePlanView({
     onAddPlan({
       date: selectedDate, // Save specifically to the active selected date!
       asset: asset.toUpperCase(),
+      setupId: setupId || undefined,
       bias,
       fourHour: { text: fourHourText, bias: fourHourBias, imageUrl: fourHourImg },
       oneHour: { text: oneHourText, bias: oneHourBias, imageUrl: oneHourImg },
@@ -147,6 +169,7 @@ export default function TradePlanView({
     setFiveMinImg('');
     setMacroNotes('');
     setTriggers('');
+    setSetupId('');
     setShowForm(false);
   };
 
@@ -268,7 +291,7 @@ export default function TradePlanView({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Asset Symbol</label>
               <input
@@ -279,6 +302,19 @@ export default function TradePlanView({
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold font-mono text-slate-800 text-xs"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Linked Setup Playbook</label>
+              <select
+                value={setupId}
+                onChange={(e) => setSetupId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800 text-xs bg-white"
+              >
+                <option value="">No reusable playbook</option>
+                {activeSetups.map(setup => <option key={setup.id} value={setup.id}>{setup.name}</option>)}
+              </select>
+              {selectedSetup && <p className="mt-1.5 text-4xs text-violet-700">{selectedSetup.entryRules.length} entry rules · {selectedSetup.direction} · {selectedSetup.preferredSessions.join(', ') || 'any session'}</p>}
             </div>
 
             <div>
@@ -663,6 +699,11 @@ export default function TradePlanView({
                       <Calendar size={11} />
                       DATE: {plan.date}
                     </span>
+                    {plan.setupId && setups.find(setup => setup.id === plan.setupId) && (
+                      <span className="text-3xs font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-1 rounded">
+                        {setups.find(setup => setup.id === plan.setupId)?.name}
+                      </span>
+                    )}
                   </div>
 
                   {/* Actions buttons */}

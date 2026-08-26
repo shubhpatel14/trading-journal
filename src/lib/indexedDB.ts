@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TradeForgeJournalDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORES = {
   TRADES: 'trades',
@@ -13,6 +13,7 @@ export const STORES = {
   DAILY_REVIEWS: 'daily_reviews',
   WEEKLY_REVIEWS: 'weekly_reviews',
   JOURNAL_RULES: 'journal_rules',
+  SETUPS: 'setups',
 } as const;
 
 export type StoreName = typeof STORES[keyof typeof STORES];
@@ -98,6 +99,10 @@ export async function saveAllIDB<T extends { id: string }>(storeName: StoreName,
       const transaction = db.transaction(storeName, 'readwrite');
       const store = transaction.objectStore(storeName);
 
+      // This utility is used to persist a complete collection snapshot. Clear the
+      // old snapshot first so deleted or replaced items cannot reappear after a
+      // reload (a particularly painful failure mode for an imported journal).
+      store.clear();
       items.forEach((item) => {
         store.put(item);
       });
