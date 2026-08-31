@@ -16,6 +16,7 @@ import {
   Coins
 } from 'lucide-react';
 import { Trade, TradePlan, PerformanceMetrics, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { getTradeDisplayDateTime } from '../utils/tradeTime';
 
 import ForgeScoreCard from './ForgeScoreCard';
 
@@ -417,7 +418,7 @@ export default function Dashboard({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-clay-muted">
-                      <span>{trade.date}</span>
+                      <span>{getTradeDisplayDateTime(trade).date}</span>
                       <span className="text-clay-accent">/</span>
                       <span>{trade.setup}</span>
                     </div>

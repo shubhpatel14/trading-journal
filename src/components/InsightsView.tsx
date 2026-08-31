@@ -38,6 +38,7 @@ import {
   Target
 } from 'lucide-react';
 import { Trade, TradingAccount, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { getTradeDisplayDateTime } from '../utils/tradeTime';
 
 interface InsightsViewProps {
   trades: Trade[];
@@ -963,8 +964,8 @@ export default function InsightsView({
 
       return {
         tradeIndex: idx + 1,
-        date: t.date,
-        time: t.time || '12:00',
+        date: getTradeDisplayDateTime(t).date,
+        time: getTradeDisplayDateTime(t).time || '12:00',
         asset: t.asset,
         pnl: netPnl,
         cumulativePnl,
@@ -1002,15 +1003,16 @@ export default function InsightsView({
     }));
 
     sortedTrades.forEach(t => {
-      const d = new Date(t.date);
+      const displayDateTime = getTradeDisplayDateTime(t);
+      const d = new Date(`${displayDateTime.date}T00:00:00`);
       const dayIdx = d.getDay();
       const netPnl = getTradeNetPnl(t);
       daysData[dayIdx].pnl = Number((daysData[dayIdx].pnl + netPnl).toFixed(2));
       daysData[dayIdx].trades += 1;
       if (netPnl > 0) daysData[dayIdx].wins += 1;
 
-      if (t.time) {
-        const hour = parseInt(t.time.split(':')[0], 10);
+      if (displayDateTime.time) {
+        const hour = parseInt(displayDateTime.time.split(':')[0], 10);
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
           hourlyData[hour].pnl = Number((hourlyData[hour].pnl + netPnl).toFixed(2));
           hourlyData[hour].trades += 1;

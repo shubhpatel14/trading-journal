@@ -81,6 +81,10 @@ export interface Trade {
   setupMaxTradesPerDay?: number;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
+  /** Original MT5 broker-server timestamps. These must never be rewritten for display. */
+  openTime?: string;
+  closeTime?: string;
+  source?: string;
   asset: string;
   setup: string; // Setup name, e.g., "BoS Downside"
   direction: 'BUY' | 'SELL';

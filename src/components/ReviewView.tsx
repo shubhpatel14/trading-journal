@@ -25,6 +25,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Trade, DailyReview, WeeklyReview, getTradeNetPnl } from '../types';
+import { getTradeDisplayDateTime } from '../utils/tradeTime';
 
 interface ReviewViewProps {
   trades: Trade[];
@@ -112,7 +113,7 @@ export default function ReviewView({
 
   // Filter trades for selected EOD date
   const dayTrades = useMemo(() => {
-    return trades.filter(t => t.date === selectedDate);
+    return trades.filter(t => getTradeDisplayDateTime(t).date === selectedDate);
   }, [trades, selectedDate]);
 
   const dayPnl = useMemo(() => {
@@ -129,7 +130,10 @@ export default function ReviewView({
 
   // Filter trades for selected EOW week range
   const weekTrades = useMemo(() => {
-    return trades.filter(t => t.date >= selectedWeekStart && t.date <= selectedWeekEnd);
+    return trades.filter(t => {
+      const displayDate = getTradeDisplayDateTime(t).date;
+      return displayDate >= selectedWeekStart && displayDate <= selectedWeekEnd;
+    });
   }, [trades, selectedWeekStart, selectedWeekEnd]);
 
   const weekPnl = useMemo(() => {
@@ -446,7 +450,7 @@ export default function ReviewView({
                         }`}>
                           {t.pnl >= 0 ? '+' : ''}${t.pnl.toLocaleString()}
                         </div>
-                        <span className="text-3xs text-slate-400">{t.time}</span>
+                        <span className="text-3xs text-slate-400">{getTradeDisplayDateTime(t).time} IST</span>
                       </div>
                     </div>
 

@@ -10,6 +10,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { Trade, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { getTradeDisplayDateTime } from '../utils/tradeTime';
 
 interface PnLCalendarProps {
   trades: Trade[];
@@ -53,8 +54,8 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
     // Check if there are trades, otherwise default to today
     if (trades.length > 0) {
       // Sort trades descending to find latest trade date and establish calendar baseline
-      const sorted = [...trades].sort((a, b) => parseDateStr(b.date).getTime() - parseDateStr(a.date).getTime());
-      return parseDateStr(sorted[0].date);
+      const sorted = [...trades].sort((a, b) => parseDateStr(getTradeDisplayDateTime(b).date).getTime() - parseDateStr(getTradeDisplayDateTime(a).date).getTime());
+      return parseDateStr(getTradeDisplayDateTime(sorted[0]).date);
     }
     return new Date();
   });
@@ -124,7 +125,7 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
 
   // Helper to get trades for a single day
   const getTradesForDay = (dateStr: string) => {
-    return trades.filter(t => t.date === dateStr);
+    return trades.filter(t => getTradeDisplayDateTime(t).date === dateStr);
   };
 
   // Calculate total Net PNL for a day (including $7/lot commissions)
@@ -136,7 +137,7 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
   // Calculate total equity on a specific date (initialBalance + cumulative Net PnL of all trades up to and including dateStr)
   const getEquityForDate = (dateStr: string) => {
     const cumulativePnl = trades
-      .filter(t => t.date <= dateStr)
+      .filter(t => getTradeDisplayDateTime(t).date <= dateStr)
       .reduce((sum, t) => sum + getTradeNetPnl(t), 0);
     return initialBalance + cumulativePnl;
   };
@@ -216,9 +217,9 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
           <div className="flex items-center gap-1">
             <span className="text-xl font-bold text-slate-800 font-mono">
               {trades.filter(t => {
-                const d = parseDateStr(t.date);
+                const d = parseDateStr(getTradeDisplayDateTime(t).date);
                 return d.getFullYear() === year && d.getMonth() === month;
-              }).reduce((acc, t) => acc.add(t.date), new Set<string>()).size}
+              }).reduce((acc, t) => acc.add(getTradeDisplayDateTime(t).date), new Set<string>()).size}
             </span>
             <span className="text-2xs text-slate-500">Days executed</span>
           </div>

@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { Trade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
+import { getTradeDisplayDateTime } from '../utils/tradeTime';
 import ScreenshotUploader from './ScreenshotUploader';
 
 
@@ -749,6 +750,7 @@ export default function JournalView({
 
   // Filter Trades
   const filteredTrades = trades.filter(t => {
+    const displayDateTime = getTradeDisplayDateTime(t);
     const matchSearch = t.asset.toLowerCase().includes(search.toLowerCase()) || 
                         t.setup.toLowerCase().includes(search.toLowerCase()) ||
                         t.notes.toLowerCase().includes(search.toLowerCase());
@@ -757,8 +759,8 @@ export default function JournalView({
     const matchSetup = setupFilter === 'ALL' || t.setup === setupFilter;
     const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
     const matchSession = sessionFilter === 'ALL' || t.session === sessionFilter;
-    const matchDate = !dateFilter || t.date === dateFilter;
-    const matchDayOfWeek = dayOfWeekFilter === 'ALL' || getTradeDayName(t.date).toLowerCase() === dayOfWeekFilter.toLowerCase();
+    const matchDate = !dateFilter || displayDateTime.date === dateFilter;
+    const matchDayOfWeek = dayOfWeekFilter === 'ALL' || getTradeDayName(displayDateTime.date).toLowerCase() === dayOfWeekFilter.toLowerCase();
     const matchTypeTab = tradeTypeTab === 'ALL' 
       ? true 
       : tradeTypeTab === 'PENDING' 
@@ -797,13 +799,13 @@ export default function JournalView({
 
   // 5-Day Pagination Logic
   const DAYS_PER_PAGE = 5;
-  const uniqueDatesInSorted = Array.from(new Set(sortedTrades.map(t => t.date)));
+  const uniqueDatesInSorted = Array.from(new Set(sortedTrades.map(t => getTradeDisplayDateTime(t).date)));
   const totalPages = Math.max(1, Math.ceil(uniqueDatesInSorted.length / DAYS_PER_PAGE));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
 
   const startIndex = (safePage - 1) * DAYS_PER_PAGE;
   const visibleDatesSet = new Set(uniqueDatesInSorted.slice(startIndex, startIndex + DAYS_PER_PAGE));
-  const paginatedTrades = sortedTrades.filter(t => visibleDatesSet.has(t.date));
+  const paginatedTrades = sortedTrades.filter(t => visibleDatesSet.has(getTradeDisplayDateTime(t).date));
 
   const handlePageChange = (newPage: number) => {
     const p = Math.min(Math.max(1, newPage), totalPages);
@@ -1885,19 +1887,21 @@ export default function JournalView({
                 {paginatedTrades.map((trade, index) => {
                   const linkedAccount = accounts.find(a => a.id === trade.accountId);
                   const isExpanded = expandedTradeId === trade.id;
-                  const showDateDivider = index === 0 || paginatedTrades[index - 1].date !== trade.date;
+                  const displayDateTime = getTradeDisplayDateTime(trade);
+                  const previousDisplayDate = index > 0 ? getTradeDisplayDateTime(paginatedTrades[index - 1]).date : null;
+                  const showDateDivider = index === 0 || previousDisplayDate !== displayDateTime.date;
 
                   return (
                     <React.Fragment key={trade.id}>
                       {/* Subtle Line Partitioning Each Day's Trades */}
                       {showDateDivider && (
-                        <tr key={`divider-${trade.date}-${index}`} className="bg-slate-50/60">
+                        <tr key={`divider-${displayDateTime.date}-${index}`} className="bg-slate-50/60">
                           <td colSpan={10} className="py-1.5 px-4">
                             <div className="flex items-center gap-3">
                               <div className="h-[1px] flex-1 bg-blue-300/60" />
                               <span className="text-4xs font-extrabold font-mono text-blue-600 bg-blue-50/80 px-2.5 py-0.5 rounded-md border border-blue-200/70 uppercase tracking-wider flex items-center gap-1 shrink-0">
                                 <CalendarDays size={10} className="text-blue-500" />
-                                {trade.date} • {getTradeDayName(trade.date)}
+                                {displayDateTime.date} • {getTradeDayName(displayDateTime.date)}
                               </span>
                               <div className="h-[1px] flex-1 bg-blue-300/60" />
                             </div>
@@ -1922,11 +1926,11 @@ export default function JournalView({
                         <td className="py-3.5 px-4 font-mono">
                           <div className="space-y-0.5">
                             <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                              <span>{trade.date}</span>
+                              <span>{displayDateTime.date}</span>
                               <span className="text-4xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200/70 px-1 py-0.2 rounded tracking-wider">IST</span>
                             </div>
                             <div className="text-3xs text-slate-500 font-medium">
-                              {trade.time ? `${format12HourTime(trade.time)} IST` : '12:00 PM IST'}
+                              {displayDateTime.time ? `${format12HourTime(displayDateTime.time)} IST` : '12:00 PM IST'}
                             </div>
                           </div>
                         </td>
