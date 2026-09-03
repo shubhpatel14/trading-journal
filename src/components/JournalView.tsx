@@ -31,7 +31,8 @@ import {
   RotateCcw,
   Award,
   Check,
-  Coins
+  Coins,
+  Layers3
 } from 'lucide-react';
 import { Trade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
@@ -587,8 +588,8 @@ export default function JournalView({
       date,
       time,
       asset: asset.toUpperCase().trim(),
-      setup,
-      setupId,
+      setup: selectedSetupDefinition?.name || setup.trim(),
+      setupId: selectedSetupDefinition?.id,
       setupRuleSnapshot: setupRuleSnapshot.length ? setupRuleSnapshot : undefined,
       setupRuleChecks: hasSetupRuleEvaluation
         ? setupRuleChecks
@@ -1054,33 +1055,47 @@ export default function JournalView({
             </div>
 
             {/* Row 2 */}
-            <div>
-              <label className="block text-2xs font-bold text-slate-500 uppercase tracking-wider mb-2">Setup / Playbook</label>
-              <input
-                type="text"
-                value={setup}
-                list="setup-playbook-options"
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/45 p-3">
+              <label className="mb-2 flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wider text-violet-700"><Layers3 size={13} /> Playbook</label>
+              <select
+                value={setupId || 'CUSTOM'}
                 onChange={(e) => {
-                  const value = e.target.value;
-                  setSetup(value);
-                  setSetupId(setups.find(item => item.name.toLowerCase() === value.trim().toLowerCase())?.id);
+                  if (e.target.value === 'CUSTOM') {
+                    setSetupId(undefined);
+                    setSetup('');
+                    setSetupRuleChecks({});
+                    return;
+                  }
+                  const selectedPlaybook = setups.find(item => item.id === e.target.value);
+                  if (!selectedPlaybook) return;
+                  setSetupId(selectedPlaybook.id);
+                  setSetup(selectedPlaybook.name);
                   setSetupRuleChecks({});
+                  if (selectedPlaybook.direction !== 'BOTH') setDirection(selectedPlaybook.direction);
                 }}
-                placeholder="Choose or type a legacy/custom setup"
-                className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs font-medium text-slate-800"
-                required
-              />
-              <datalist id="setup-playbook-options">
+                className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              >
+                <option value="CUSTOM">Custom / legacy setup</option>
                 {setups.filter(item => item.status === 'ACTIVE' || item.id === setupId).map(item => (
-                  <option key={item.id} value={item.name}>{item.status === 'ARCHIVED' ? 'Archived playbook' : 'Playbook'}</option>
+                  <option key={item.id} value={item.id}>{item.name}{item.status === 'ARCHIVED' ? ' (Archived)' : ''}</option>
                 ))}
-              </datalist>
+              </select>
+              {!setupId && (
+                <input
+                  type="text"
+                  value={setup}
+                  onChange={(e) => setSetup(e.target.value)}
+                  placeholder="Enter a custom setup name"
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                  required
+                />
+              )}
               {selectedSetupDefinition ? (
                 <p className="mt-1.5 text-4xs leading-relaxed text-violet-700 font-sans">
                   Linked to playbook · {selectedSetupDefinition.entryRules.length} entry rules · target checklist {selectedSetupDefinition.minChecklistScore ?? 'not set'}
                 </p>
               ) : (
-                <p className="mt-1.5 text-4xs leading-relaxed text-slate-400 font-sans">Type any legacy or custom setup name, or choose an active playbook.</p>
+                <p className="mt-1.5 text-4xs leading-relaxed text-slate-500 font-sans">Choose a Playbooks-tab strategy above, or keep this trade under a custom setup name.</p>
               )}
             </div>
 

@@ -687,6 +687,7 @@ export default function InsightsView({
 }: InsightsViewProps) {
   // Time Period Filter State
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('30d');
+  const [playbookFilter, setPlaybookFilter] = useState('ALL');
 
   // Modal state for Universal ℹ️ Info buttons
   const [activeInfoKey, setActiveInfoKey] = useState<string | null>(null);
@@ -701,6 +702,7 @@ export default function InsightsView({
   }, [accounts, selectedAccountId]);
 
   const setupById = useMemo(() => new Map(setups.map(setup => [setup.id, setup])), [setups]);
+  const setupByName = useMemo(() => new Map(setups.map(setup => [setup.name.trim().toLowerCase(), setup])), [setups]);
 
   const activeInitialCapital = useMemo(() => {
     if (selectedAccountId === 'ALL') {
@@ -1092,13 +1094,13 @@ export default function InsightsView({
 
   // 6. SETUP ANALYTICS & EXPECTANCY
   const setupAnalytics = useMemo(() => {
-    const map: Record<string, { setup: string; setupId?: string; pnl: number; trades: number; wins: number; grossProfit: number; grossLoss: number }> = {};
+    const map: Record<string, { key: string; setup: string; setupId?: string; isPlaybook: boolean; pnl: number; trades: number; wins: number; grossProfit: number; grossLoss: number }> = {};
     
     sortedTrades.forEach(t => {
-      const linkedSetup = t.setupId ? setupById.get(t.setupId) : undefined;
+      const linkedSetup = (t.setupId ? setupById.get(t.setupId) : undefined) || setupByName.get((t.setup || '').trim().toLowerCase());
       const setupKey = linkedSetup ? `id:${linkedSetup.id}` : `legacy:${t.setup || 'Standard Setup'}`;
       const setupLabel = linkedSetup?.name || t.setup || 'Standard Setup';
-      if (!map[setupKey]) map[setupKey] = { setup: setupLabel, setupId: linkedSetup?.id, pnl: 0, trades: 0, wins: 0, grossProfit: 0, grossLoss: 0 };
+      if (!map[setupKey]) map[setupKey] = { key: setupKey, setup: setupLabel, setupId: linkedSetup?.id, isPlaybook: Boolean(linkedSetup), pnl: 0, trades: 0, wins: 0, grossProfit: 0, grossLoss: 0 };
       const netPnl = getTradeNetPnl(t);
       map[setupKey].pnl += netPnl;
       map[setupKey].trades += 1;
@@ -1118,8 +1120,10 @@ export default function InsightsView({
       const expectancy = (winRate / 100 * avgWin) - ((1 - (winRate / 100)) * avgLoss);
       
       return {
+        key: d.key,
         setup: d.setup,
         setupId: d.setupId,
+        isPlaybook: d.isPlaybook,
         pnl: d.pnl,
         trades: d.trades,
         winRate,
@@ -1127,7 +1131,17 @@ export default function InsightsView({
         expectancy
       };
     }).sort((a, b) => b.pnl - a.pnl);
-  }, [sortedTrades, setupById]);
+  }, [sortedTrades, setupById, setupByName]);
+
+  const activePlaybookFilter = playbookFilter === 'ALL' || setupAnalytics.some(item => item.key === playbookFilter)
+    ? playbookFilter
+    : 'ALL';
+  const visiblePlaybookAnalytics = activePlaybookFilter === 'ALL'
+    ? setupAnalytics
+    : setupAnalytics.filter(item => item.key === activePlaybookFilter);
+  const linkedPlaybookTrades = setupAnalytics
+    .filter(item => item.isPlaybook)
+    .reduce((sum, item) => sum + item.trades, 0);
 
   // 7. BEHAVIORAL MISTAKES ANALYTICS
   const behavioralAnalytics = useMemo(() => {
@@ -2223,32 +2237,49 @@ export default function InsightsView({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           
-          {/* Setup Profitability Table - 6 cols */}
-          <div className="lg:col-span-6 bg-white border border-slate-100 p-5 rounded-2xl shadow-xs space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
-                Strategy Setup Expectancy & Profit Factor
-              </h3>
-              <button onClick={() => openInfoModal('setup_performance')} className="text-slate-400 hover:text-blue-600 cursor-pointer">
-                <Info size={13} />
-              </button>
+          {/* Playbook Profitability Table - 6 cols */}
+          <div className="lg:col-span-6 clay-card p-5 space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-sans">Trades by Playbook</h3>
+                  <button onClick={() => openInfoModal('setup_performance')} className="text-slate-400 hover:text-violet-600 cursor-pointer"><Info size={13} /></button>
+                </div>
+                <p className="mt-1 text-4xs leading-relaxed text-slate-500">Net performance for journal trades linked by playbook ID or an exact legacy name match.</p>
+              </div>
+              <span className="w-fit shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-4xs font-black text-violet-700">{linkedPlaybookTrades} / {sortedTrades.length} linked</span>
             </div>
+            <select
+              value={activePlaybookFilter}
+              onChange={(event) => setPlaybookFilter(event.target.value)}
+              className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-2xs font-bold text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+            >
+              <option value="ALL">All playbooks and custom setups</option>
+              {setupAnalytics.map(item => <option key={item.key} value={item.key}>{item.setup} · {item.trades} trade{item.trades === 1 ? '' : 's'}</option>)}
+            </select>
             <div className="space-y-3">
-              {setupAnalytics.map(s => (
-                <div key={s.setup} className="p-3 bg-slate-50/80 rounded-xl border border-slate-150 space-y-1.5 font-sans">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-slate-900">{s.setup}</span>
+              {visiblePlaybookAnalytics.map(s => (
+                <div key={s.key} className="rounded-2xl border border-violet-100 bg-white/75 p-3.5 font-sans shadow-sm">
+                  <div className="flex justify-between items-start gap-3 text-xs">
+                    <div className="min-w-0">
+                      <span className="block truncate font-black text-slate-900">{s.setup}</span>
+                      <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${s.isPlaybook ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}`}>{s.isPlaybook ? 'Playbook' : 'Custom setup'}</span>
+                    </div>
                     <span className={`font-mono font-extrabold ${s.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {formatVal(s.pnl, { showSign: true })}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-3xs font-mono text-slate-500 pt-1 border-t border-slate-200/60">
-                    <div>Trades: <span className="font-bold text-slate-800">{s.trades}</span></div>
-                    <div>Win Rate: <span className="font-bold text-emerald-600">{s.winRate.toFixed(0)}%</span></div>
-                    <div>PF: <span className="font-bold text-blue-700">{s.profitFactor === 99.9 ? '∞' : s.profitFactor.toFixed(2)}</span></div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-4">
+                    <div><div className="text-4xs font-bold uppercase tracking-wider text-slate-400">Trades</div><span className="text-2xs font-black text-slate-800">{s.trades}</span></div>
+                    <div><div className="text-4xs font-bold uppercase tracking-wider text-slate-400">Win rate</div><span className="text-2xs font-black text-emerald-600">{s.winRate.toFixed(0)}%</span></div>
+                    <div><div className="text-4xs font-bold uppercase tracking-wider text-slate-400">Profit factor</div><span className="text-2xs font-black text-blue-700">{s.profitFactor === 99.9 ? '∞' : s.profitFactor.toFixed(2)}</span></div>
+                    <div><div className="text-4xs font-bold uppercase tracking-wider text-slate-400">Expectancy</div><span className={`text-2xs font-black ${s.expectancy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatVal(s.expectancy, { showSign: true })}</span></div>
                   </div>
                 </div>
               ))}
+              {visiblePlaybookAnalytics.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/40 p-6 text-center text-xs font-bold text-slate-500">No closed trades match this playbook in the selected timeframe.</div>
+              )}
             </div>
           </div>
 
