@@ -8,7 +8,7 @@ import fs from 'fs';
 dotenv.config();
 
 const envGeminiApiKey = process.env.GEMINI_API_KEY?.trim() || '';
-const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 let sessionGeminiApiKey = '';
 
 const getGeminiApiKey = () => sessionGeminiApiKey || envGeminiApiKey;
