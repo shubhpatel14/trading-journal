@@ -27,6 +27,7 @@ interface TradePlanViewProps {
   onExecutePlan: (plan: TradePlan) => void;
   prefillSetup?: SetupDefinition | null;
   onClearPrefillSetup?: () => void;
+  hideHeader?: boolean;
 }
 
 const getLocalDateStr = (d = new Date()) => {
@@ -51,7 +52,8 @@ export default function TradePlanView({
   onArchivePlan,
   onExecutePlan,
   prefillSetup,
-  onClearPrefillSetup
+  onClearPrefillSetup,
+  hideHeader = false
 }: TradePlanViewProps) {
   // Current Date filter for Daily changing structure
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -211,7 +213,7 @@ export default function TradePlanView({
       )}
 
       {/* Tab Header with Context */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {!hideHeader && <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <FileText className="text-blue-600" />
@@ -243,7 +245,7 @@ export default function TradePlanView({
             {showForm ? 'Close Editor' : 'Draft Daily Setup'}
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Structural help instructions */}
       {showHelp && (

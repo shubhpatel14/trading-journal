@@ -1,7 +1,6 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import {
   LayoutDashboard,
-  FileText,
   BookOpen,
   Calendar,
   BrainCircuit,
@@ -25,10 +24,11 @@ import {
   ClipboardCheck,
   Coins,
   Heart,
-  Brain
+  Brain,
+  MessageSquareText
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, DisciplineSettings, DailyDisciplineRecord, DisciplineViolation, SetupDefinition } from './types';
-import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_DISCIPLINE_SETTINGS, INITIAL_DISCIPLINE_RECORDS, INITIAL_DISCIPLINE_VIOLATIONS, DEFAULT_SETUP_DEFINITIONS } from './mockData';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, SetupDefinition } from './types';
+import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_SETUP_DEFINITIONS } from './mockData';
 
 // Import Firebase config & helpers
 import {
@@ -60,13 +60,12 @@ import BrandLogo from './components/BrandLogo';
 import LoginPage from './components/LoginPage';
 
 // Lazy-loaded view components for bundle optimization
-const TradePlanView = React.lazy(() => import('./components/TradePlanView'));
 const JournalView = React.lazy(() => import('./components/JournalView'));
 const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
-const ReviewView = React.lazy(() => import('./components/ReviewView'));
-const DisciplineCoachView = React.lazy(() => import('./components/DisciplineCoachView'));
+const PlanningReviewView = React.lazy(() => import('./components/PlanningReviewView'));
 const SetupLibraryView = React.lazy(() => import('./components/SetupLibraryView'));
+const AIChatView = React.lazy(() => import('./components/AIChatView'));
 
 const ViewLoadingFallback = () => (
   <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
@@ -291,56 +290,6 @@ export default function App() {
     }
     return [];
   });
-
-  // Discipline Coach States
-  const [disciplineSettings, setDisciplineSettings] = useState<DisciplineSettings>(() => {
-    const isReal = isRealAccountSession();
-    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_SETTINGS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_SETTINGS');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.session) return parsed;
-      } catch (e) {}
-    }
-    return DEFAULT_DISCIPLINE_SETTINGS;
-  });
-
-  const [disciplineRecords, setDisciplineRecords] = useState<DailyDisciplineRecord[]>(() => {
-    const isReal = isRealAccountSession();
-    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_RECORDS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_RECORDS');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_DISCIPLINE_RECORDS;
-  });
-
-  const [disciplineViolations, setDisciplineViolations] = useState<DisciplineViolation[]>(() => {
-    const isReal = isRealAccountSession();
-    const saved = isReal ? localStorage.getItem('TRADEPLAN_DISCIPLINE_VIOLATIONS') : sessionStorage.getItem('TRADEPLAN_GUEST_DISCIPLINE_VIOLATIONS');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_DISCIPLINE_VIOLATIONS;
-  });
-
-  // Sync Discipline Coach persistence
-  useEffect(() => {
-    if (isDemoUser) {
-      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_SETTINGS', JSON.stringify(disciplineSettings));
-      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_RECORDS', JSON.stringify(disciplineRecords));
-      sessionStorage.setItem('TRADEPLAN_GUEST_DISCIPLINE_VIOLATIONS', JSON.stringify(disciplineViolations));
-    } else {
-      localStorage.setItem('TRADEPLAN_DISCIPLINE_SETTINGS', JSON.stringify(disciplineSettings));
-      localStorage.setItem('TRADEPLAN_DISCIPLINE_RECORDS', JSON.stringify(disciplineRecords));
-      localStorage.setItem('TRADEPLAN_DISCIPLINE_VIOLATIONS', JSON.stringify(disciplineViolations));
-    }
-  }, [disciplineSettings, disciplineRecords, disciplineViolations, isDemoUser]);
 
   // Journal Rules State
   const [journalRules, setJournalRules] = useState<JournalRule[]>(() => {
@@ -1614,13 +1563,12 @@ export default function App() {
             <nav className="hidden lg:flex gap-1.5 xl:gap-2">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                { id: 'setups', label: 'Setup Library', icon: FolderOpen },
-                { id: 'plans', label: 'Setup Plans', icon: FileText },
+                { id: 'setups', label: 'Playbooks', icon: FolderOpen },
+                { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
                 { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
-                { id: 'reviews', label: 'EOD / EOW Reviews', icon: ClipboardCheck },
-                { id: 'discipline', label: 'Discipline Coach', icon: Heart }
+                { id: 'ai-chat', label: 'AI Chat', icon: MessageSquareText }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -1718,13 +1666,12 @@ export default function App() {
         <div className="flex min-w-max justify-around items-center px-1 py-1.5">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'setups', label: 'Setups', icon: FolderOpen },
-            { id: 'plans', label: 'Plans', icon: FileText },
+            { id: 'setups', label: 'Playbooks', icon: FolderOpen },
+            { id: 'plans', label: 'Plan + Review', icon: ClipboardCheck },
             { id: 'journal', label: 'Journal', icon: BookOpen },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
             { id: 'insights', label: 'Insights', icon: BrainCircuit },
-            { id: 'reviews', label: 'Reviews', icon: ClipboardCheck },
-            { id: 'discipline', label: 'Coach', icon: Heart }
+            { id: 'ai-chat', label: 'AI Chat', icon: MessageSquareText }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -2064,7 +2011,7 @@ export default function App() {
                     </div>
                     <p className="leading-relaxed font-sans text-slate-600">
                       The Firebase database configuration is not yet fully loaded or provisioned.
-                      You can enter <strong className="text-amber-900">Guest Mode (Demo Offline)</strong> below to log trades, manage your account, and test the AI Coach in-browser right now!
+                      You can enter <strong className="text-amber-900">Guest Mode (Demo Offline)</strong> below to log trades, manage your account, and explore the journal in-browser right now!
                     </p>
                   </div>
                 ) : (
@@ -2225,13 +2172,20 @@ export default function App() {
           )}
 
           {currentTab === 'plans' && (
-            <TradePlanView
+            <PlanningReviewView
+              trades={filteredTrades}
               plans={plans}
               setups={setupDefinitions}
+              dailyReviews={dailyReviews}
+              weeklyReviews={weeklyReviews}
               onAddPlan={handleAddPlan}
               onDeletePlan={handleDeletePlan}
               onArchivePlan={handleArchivePlan}
               onExecutePlan={handleExecutePlan}
+              onAddDailyReview={handleAddDailyReview}
+              onDeleteDailyReview={handleDeleteDailyReview}
+              onAddWeeklyReview={handleAddWeeklyReview}
+              onDeleteWeeklyReview={handleDeleteWeeklyReview}
               prefillSetup={prefillPlanSetup}
               onClearPrefillSetup={() => setPrefillPlanSetup(null)}
             />
@@ -2284,30 +2238,18 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'reviews' && (
-            <ReviewView
+          {currentTab === 'ai-chat' && (
+            <AIChatView
               trades={filteredTrades}
+              plans={plans}
+              setups={setupDefinitions}
               dailyReviews={dailyReviews}
               weeklyReviews={weeklyReviews}
-              onAddDailyReview={handleAddDailyReview}
-              onDeleteDailyReview={handleDeleteDailyReview}
-              onAddWeeklyReview={handleAddWeeklyReview}
-              onDeleteWeeklyReview={handleDeleteWeeklyReview}
+              accounts={accounts}
+              selectedAccountId={selectedAccountId}
             />
           )}
 
-          {currentTab === 'discipline' && (
-            <DisciplineCoachView
-              trades={filteredTrades}
-              settings={disciplineSettings}
-              records={disciplineRecords}
-              violations={disciplineViolations}
-              onUpdateSettings={setDisciplineSettings}
-              onUpdateRecords={setDisciplineRecords}
-              onUpdateViolations={setDisciplineViolations}
-              currencySymbol="$"
-            />
-          )}
         </Suspense>
 
       </main>

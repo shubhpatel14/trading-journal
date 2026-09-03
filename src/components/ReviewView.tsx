@@ -35,6 +35,8 @@ interface ReviewViewProps {
   onDeleteDailyReview: (id: string) => void;
   onAddWeeklyReview: (review: Omit<WeeklyReview, 'id' | 'createdAt'>) => void;
   onDeleteWeeklyReview: (id: string) => void;
+  mode?: 'EOD' | 'EOW';
+  hideHeader?: boolean;
 }
 
 const COMMON_MISTAKES = [
@@ -82,9 +84,12 @@ export default function ReviewView({
   onAddDailyReview,
   onDeleteDailyReview,
   onAddWeeklyReview,
-  onDeleteWeeklyReview
+  onDeleteWeeklyReview,
+  mode: controlledMode,
+  hideHeader = false
 }: ReviewViewProps) {
-  const [mode, setMode] = useState<'EOD' | 'EOW'>('EOD');
+  const [internalMode, setInternalMode] = useState<'EOD' | 'EOW'>('EOD');
+  const mode = controlledMode ?? internalMode;
   
   // EOD State
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateStr());
@@ -272,7 +277,7 @@ export default function ReviewView({
       )}
 
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {!hideHeader && <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <BrainCircuit className="text-purple-600" />
@@ -286,7 +291,7 @@ export default function ReviewView({
         {/* EOD / EOW Mode Toggle Switch */}
         <div className="clay-pressed flex items-center p-1.5 rounded-2xl">
           <button
-            onClick={() => setMode('EOD')}
+            onClick={() => setInternalMode('EOD')}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               mode === 'EOD'
                 ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -297,7 +302,7 @@ export default function ReviewView({
             Daily (EOD) Review
           </button>
           <button
-            onClick={() => setMode('EOW')}
+            onClick={() => setInternalMode('EOW')}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               mode === 'EOW'
                 ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
@@ -308,7 +313,7 @@ export default function ReviewView({
             Weekly (EOW) Review
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* ========================================================================= */}
       {/* MODE 1: DAILY (EOD) REVIEW                                               */}

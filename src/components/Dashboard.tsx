@@ -245,7 +245,7 @@ export default function Dashboard({
             </div>
             <div className="flex flex-col gap-3 sm:flex-row pt-2">
               <button id="btn-nav-journal" onClick={() => onNavigate('plans')} className="clay-button clay-button-secondary px-5 py-2 text-sm">
-                Manage Setup Plans
+                Open Planning & Reviews
                 <ArrowRight size={16} className="stroke-[3px]" />
               </button>
               <button id="btn-log-trade-banner" onClick={onOpenNewTrade} className="clay-button clay-button-primary px-5 py-2 text-sm">

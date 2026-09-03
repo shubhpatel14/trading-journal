@@ -1530,54 +1530,60 @@ export default function InsightsView({
         </div>
       ) : (
         <>
-          <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-5 sm:p-7 text-white shadow-lg">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-blue-500/25 blur-3xl" />
-            <div className="pointer-events-none absolute bottom-0 left-1/3 h-24 w-24 rounded-full bg-violet-500/20 blur-2xl" />
+          <section className="clay-surface relative overflow-hidden p-5 sm:p-7">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-300/25 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-sky-300/20 blur-3xl" />
             <div className="relative space-y-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2 text-blue-200 text-3xs font-black uppercase tracking-[0.18em]">
-                    <Target size={14} />
-                    Tactical brief
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex max-w-3xl items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-400 to-violet-700 text-white shadow-clayButton">
+                    <Target size={19} className="stroke-[2.5px]" />
                   </div>
-                  <h2 className="mt-2 text-xl sm:text-2xl font-black tracking-tight">What the current trade sample is telling you</h2>
-                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-300">Use this as a review prompt—not a signal to increase size. All figures below are net of recorded fees and exclude open trades.</p>
+                  <div>
+                    <div className="text-3xs font-black uppercase tracking-[0.18em] text-violet-700">Tactical brief</div>
+                    <h2 className="mt-1 font-display text-xl font-black tracking-tight text-slate-900 sm:text-2xl">What the current trade sample is telling you</h2>
+                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Use this as a review prompt—not a signal to increase size. All figures below are net of recorded fees and exclude open trades.</p>
+                  </div>
                 </div>
-                <span className={`w-fit rounded-full border px-3 py-1.5 text-3xs font-black uppercase tracking-wider ${sampleAssessment.tone}`}>
+                <span className={`w-fit shrink-0 rounded-full border px-3 py-1.5 text-3xs font-black uppercase tracking-wider shadow-sm ${sampleAssessment.tone}`}>
                   {sampleAssessment.label}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Evidence quality</div>
-                  <div className="mt-2 text-lg font-black">{kpis.totalTrades} closed trades</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">{sampleAssessment.note}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Focus for review</div>
-                  <div className="mt-2 text-sm font-black text-emerald-300">{strongestSetup?.setup || 'No setup data yet'}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">
+                <article className="relative overflow-hidden rounded-[24px] border border-violet-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(124,58,237,0.08)] backdrop-blur-sm">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-400 to-violet-600" />
+                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><Database size={13} className="text-violet-500" /> Evidence quality</div>
+                  <div className="mt-2 font-display text-lg font-black text-slate-900">{kpis.totalTrades} closed trades</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">{sampleAssessment.note}</p>
+                </article>
+                <article className="relative overflow-hidden rounded-[24px] border border-emerald-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.07)] backdrop-blur-sm">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 to-emerald-500" />
+                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><Target size={13} className="text-emerald-500" /> Focus for review</div>
+                  <div className="mt-2 text-sm font-black text-emerald-700">{strongestSetup?.setup || 'No setup data yet'}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">
                     {strongestSetup ? `${strongestSetup.trades} trades · ${formatVal(strongestSetup.pnl, { showSign: true })} net. Compare it with lower-performing setups before changing rules.` : 'Log setup names consistently to compare them.'}
                   </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Risk posture</div>
-                  <div className={`mt-2 text-sm font-black ${riskState.label === 'Risk contained' ? 'text-emerald-300' : 'text-rose-300'}`}>{riskState.label}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">{riskState.detail} Max drawdown: {kpis.maxDrawdownPct.toFixed(2)}%.</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/8 p-4 backdrop-blur-sm">
-                  <div className="text-3xs font-bold uppercase tracking-wider text-slate-400">Process check</div>
-                  <div className="mt-2 text-sm font-black text-amber-300">{topMistake ? topMistake.mistake : 'No mistakes tagged'}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-300">
+                </article>
+                <article className="relative overflow-hidden rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(244,63,94,0.07)] backdrop-blur-sm">
+                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskState.label === 'Risk contained' ? 'from-emerald-300 to-emerald-500' : 'from-rose-300 to-rose-500'}`} />
+                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><ShieldAlert size={13} className={riskState.label === 'Risk contained' ? 'text-emerald-500' : 'text-rose-500'} /> Risk posture</div>
+                  <div className={`mt-2 text-sm font-black ${riskState.label === 'Risk contained' ? 'text-emerald-700' : 'text-rose-700'}`}>{riskState.label}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">{riskState.detail} Max drawdown: {kpis.maxDrawdownPct.toFixed(2)}%.</p>
+                </article>
+                <article className="relative overflow-hidden rounded-[24px] border border-amber-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(245,158,11,0.07)] backdrop-blur-sm">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-300 to-amber-500" />
+                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><CheckCircle2 size={13} className="text-amber-500" /> Process check</div>
+                  <div className="mt-2 text-sm font-black text-amber-700">{topMistake ? topMistake.mistake : 'No mistakes tagged'}</div>
+                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">
                     {topMistake ? `${topMistake.count} tagged trades · ${formatVal(topMistake.totalLoss, { showSign: true })} net associated result. Review the chart and notes before drawing a causal conclusion.` : 'Keep tagging execution mistakes to make this signal useful.'}
                   </p>
-                </div>
+                </article>
               </div>
 
               {weakestSetup && strongestSetup && weakestSetup.setup !== strongestSetup.setup && (
-                <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-3xs text-amber-100">
-                  Review contrast: <strong>{strongestSetup.setup}</strong> is currently {formatVal(strongestSetup.pnl, { showSign: true })} net, while <strong>{weakestSetup.setup}</strong> is {formatVal(weakestSetup.pnl, { showSign: true })} net. Check the sample count, time of day, and checklist quality before deciding whether to pause a setup.
+                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-3xs leading-relaxed text-amber-900">
+                  <strong className="font-black">Review contrast:</strong> <strong>{strongestSetup.setup}</strong> is currently {formatVal(strongestSetup.pnl, { showSign: true })} net, while <strong>{weakestSetup.setup}</strong> is {formatVal(weakestSetup.pnl, { showSign: true })} net. Check the sample count, time of day, and checklist quality before deciding whether to pause a setup.
                 </div>
               )}
             </div>
