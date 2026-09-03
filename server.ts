@@ -8,69 +8,17 @@ import fs from 'fs';
 dotenv.config();
 
 const envGeminiApiKey = process.env.GEMINI_API_KEY?.trim() || '';
-const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-let sessionGeminiApiKey = '';
-
-const getGeminiApiKey = () => sessionGeminiApiKey || envGeminiApiKey;
+const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.7-flash';
 
 const createGeminiClient = () => new GoogleGenAI({
-  apiKey: getGeminiApiKey(),
+  apiKey: envGeminiApiKey,
   httpOptions: {
+    timeout: 45_000,
     headers: {
       'User-Agent': 'tradeforge-local-journal',
     }
   }
 });
-
-const clampText = (value: unknown, maxLength: number) =>
-  typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
-
-const buildConversationTranscript = (history: unknown) => {
-  if (!Array.isArray(history)) return 'No previous conversation.';
-  return history
-    .slice(-10)
-    .map(item => {
-      const role = item?.role === 'assistant' ? 'Assistant' : 'Trader';
-      const content = clampText(item?.content, 3000);
-      return content ? `${role}: ${content}` : '';
-    })
-    .filter(Boolean)
-    .join('\n\n') || 'No previous conversation.';
-};
-
-const generateGroundedTradingResponse = async ({
-  question,
-  context,
-  history,
-  mode,
-}: {
-  question: string;
-  context: unknown;
-  history?: unknown;
-  mode: 'overview' | 'chat';
-}) => {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error('GEMINI_NOT_CONFIGURED');
-
-  const contextJson = JSON.stringify(context).slice(0, 180_000);
-  const transcript = buildConversationTranscript(history);
-  const task = mode === 'overview'
-    ? `Create a concise opening performance overview. Lead with the most decision-useful findings, including win rate, net P&L, strongest setup, risk/drawdown, and one process issue when the supplied data supports them. End with 2 useful questions the trader could ask next.`
-    : `Answer the trader's question directly using the supplied journal snapshot. Question: ${question}`;
-
-  const ai = createGeminiClient();
-  const response = await ai.models.generateContent({
-    model: geminiModel,
-    contents: `${task}\n\nRECENT CONVERSATION\n${transcript}\n\nTRADING JOURNAL SNAPSHOT (authoritative JSON)\n${contextJson}`,
-    config: {
-      systemInstruction: `You are TradeForge's grounded trading-journal analyst. Use only the supplied journal snapshot for claims about this trader. Calculate from supplied values when needed, state the date range used, and clearly say when the data is insufficient. Net P&L values already include recorded fees. Never invent trades, prices, setups, notes, or outcomes. Do not present generic market predictions or tell the user to increase risk. Keep responses concise, practical, and formatted with short headings and bullets.`,
-      temperature: 0.2,
-      maxOutputTokens: mode === 'overview' ? 700 : 1000,
-    },
-  });
-
-  return response.text?.trim() || 'Gemini returned an empty response.';
-};
 
 async function startServer() {
   const app = express();
@@ -78,75 +26,6 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-  app.get('/api/ai/config', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    return res.json({
-      configured: Boolean(getGeminiApiKey()),
-      source: sessionGeminiApiKey ? 'session' : envGeminiApiKey ? 'environment' : 'none',
-      model: geminiModel,
-    });
-  });
-
-  app.post('/api/ai/config', (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    const apiKey = clampText(req.body?.apiKey, 512);
-    if (apiKey.length < 20) {
-      return res.status(400).json({ error: 'Enter a valid Gemini API key.' });
-    }
-    sessionGeminiApiKey = apiKey;
-    return res.json({ configured: true, source: 'session', model: geminiModel });
-  });
-
-  app.delete('/api/ai/config', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    sessionGeminiApiKey = '';
-    return res.json({
-      configured: Boolean(envGeminiApiKey),
-      source: envGeminiApiKey ? 'environment' : 'none',
-      model: geminiModel,
-    });
-  });
-
-  app.post('/api/ai/chat', async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    try {
-      const mode = req.body?.mode === 'overview' ? 'overview' : 'chat';
-      const question = clampText(req.body?.question, 2000);
-      const context = req.body?.context;
-
-      if (!context || typeof context !== 'object') {
-        return res.status(400).json({ error: 'A compact trading journal context is required.' });
-      }
-      if (mode === 'chat' && !question) {
-        return res.status(400).json({ error: 'Enter a question about your journal.' });
-      }
-
-      const answer = await generateGroundedTradingResponse({
-        question,
-        context,
-        history: req.body?.history,
-        mode,
-      });
-      return res.json({ answer, model: geminiModel });
-    } catch (err: any) {
-      if (err?.message === 'GEMINI_NOT_CONFIGURED') {
-        return res.status(503).json({ error: 'Configure a Gemini API key before starting the chat.', code: 'GEMINI_NOT_CONFIGURED' });
-      }
-      const errorMessage = String(err?.message || err || '');
-      console.error('Grounded Gemini Chat Error:', errorMessage);
-      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
-        return res.status(401).json({ error: 'Gemini rejected this API key. Add a valid Google AI Studio Gemini key and try again.', code: 'GEMINI_KEY_INVALID' });
-      }
-      if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-        return res.status(429).json({ error: 'The Gemini quota for this key is currently exhausted. Check its quota or try again later.', code: 'GEMINI_QUOTA_EXHAUSTED' });
-      }
-      if (errorMessage.includes('NOT_FOUND') || errorMessage.includes('not found')) {
-        return res.status(502).json({ error: `The configured Gemini model (${geminiModel}) is unavailable for this key. Set GEMINI_MODEL in .env to a supported model.`, code: 'GEMINI_MODEL_UNAVAILABLE' });
-      }
-      return res.status(500).json({ error: 'Gemini could not answer this question. Check the server log for details.', code: 'GEMINI_REQUEST_FAILED' });
-    }
-  });
 
   // Ensure assets/uploads directory exists
   const uploadsDir = path.join(process.cwd(), 'assets', 'uploads');
@@ -224,7 +103,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing or invalid trades list.' });
       }
 
-      if (!getGeminiApiKey()) {
+      if (!envGeminiApiKey) {
         return res.status(200).json({ 
           feedback: 'Gemini is not configured yet. Open the AI Chat tab to add an API key for this server session.'
         });

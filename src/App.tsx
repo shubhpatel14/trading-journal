@@ -24,8 +24,7 @@ import {
   ClipboardCheck,
   Coins,
   Heart,
-  Brain,
-  MessageSquareText
+  Brain
 } from 'lucide-react';
 import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, SetupDefinition } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_SETUP_DEFINITIONS } from './mockData';
@@ -65,7 +64,6 @@ const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
 const PlanningReviewView = React.lazy(() => import('./components/PlanningReviewView'));
 const SetupLibraryView = React.lazy(() => import('./components/SetupLibraryView'));
-const AIChatView = React.lazy(() => import('./components/AIChatView'));
 
 const ViewLoadingFallback = () => (
   <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
@@ -1567,8 +1565,7 @@ export default function App() {
                 { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
-                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
-                { id: 'ai-chat', label: 'AI Chat', icon: MessageSquareText }
+                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -1670,8 +1667,7 @@ export default function App() {
             { id: 'plans', label: 'Plan + Review', icon: ClipboardCheck },
             { id: 'journal', label: 'Journal', icon: BookOpen },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
-            { id: 'insights', label: 'Insights', icon: BrainCircuit },
-            { id: 'ai-chat', label: 'AI Chat', icon: MessageSquareText }
+            { id: 'insights', label: 'Insights', icon: BrainCircuit }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -2235,18 +2231,6 @@ export default function App() {
               selectedAccountId={selectedAccountId}
               accounts={accounts}
               setups={setupDefinitions}
-            />
-          )}
-
-          {currentTab === 'ai-chat' && (
-            <AIChatView
-              trades={filteredTrades}
-              plans={plans}
-              setups={setupDefinitions}
-              dailyReviews={dailyReviews}
-              weeklyReviews={weeklyReviews}
-              accounts={accounts}
-              selectedAccountId={selectedAccountId}
             />
           )}
 

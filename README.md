@@ -11,7 +11,7 @@ A local-first trading journal with trade plans, screenshots, reviews, discipline
 Prerequisites: Node.js 20+ and npm.
 
 1. Install dependencies with `npm install`.
-2. Optionally copy `.env.example` to `.env` and add `GEMINI_API_KEY=...`. You can also configure the key from the AI Chat tab; UI-entered keys stay only in the running server process.
+2. Optionally copy `.env.example` to `.env` and add `GEMINI_API_KEY=...` to enable Gemini performance audits in Tactical Insights.
 3. Start the app with `npm run dev`, then open `http://localhost:3000`.
 
 Use `npm run build` to create a production build and `npm start` to serve it.
@@ -25,7 +25,3 @@ The app stores data locally in IndexedDB and keeps a local `trades_backup.json` 
 - **Export CSV** creates a spreadsheet-ready report with gross P&L, each fee, and net P&L.
 
 Firebase and MT5 are optional. Firebase requires the configured project in `src/lib/firebase.ts`; MT5 sync requires an open, logged-in MT5 terminal on the same computer running the server.
-
-## Grounded AI Chat
-
-The AI Chat tab builds a compact snapshot from the currently selected account's trades, plans, playbooks, and reviews. Gemini requests go through `/api/ai/chat`; the browser bundle never contains the API key. The automatic overview and follow-up answers are grounded in that snapshot, and screenshots are excluded.
