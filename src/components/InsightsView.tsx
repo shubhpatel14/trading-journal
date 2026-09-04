@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { Trade, TradingAccount, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getTradeDisplayDateTime } from '../utils/tradeTime';
+import { getTradeGrade } from '../utils/tradeGrade';
 
 interface InsightsViewProps {
   trades: Trade[];
@@ -1167,7 +1168,117 @@ export default function InsightsView({
     return list;
   }, [sortedTrades]);
 
-  // 8. ADVANCED INSTITUTIONAL STATISTICS (MATHEMATICALLY REVISED)
+  // 8. EXECUTION QUALITY, JOURNAL HEALTH & RECENT FORM
+  const executionQualityAnalytics = useMemo(() => {
+    const summarizeSegment = (segmentTrades: Trade[]) => {
+      const pnls = segmentTrades.map(getTradeNetPnl);
+      const wins = pnls.filter(value => value > 0).length;
+      const grossProfit = pnls.filter(value => value > 0).reduce((sum, value) => sum + value, 0);
+      const grossLoss = Math.abs(pnls.filter(value => value < 0).reduce((sum, value) => sum + value, 0));
+      const pnl = pnls.reduce((sum, value) => sum + value, 0);
+
+      return {
+        trades: segmentTrades.length,
+        pnl,
+        avgPnl: segmentTrades.length ? pnl / segmentTrades.length : 0,
+        winRate: segmentTrades.length ? (wins / segmentTrades.length) * 100 : 0,
+        profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99.9 : 0,
+      };
+    };
+
+    const directionAnalytics = (['BUY', 'SELL'] as const).map(direction => ({
+      direction,
+      ...summarizeSegment(sortedTrades.filter(trade => trade.direction === direction)),
+    })).filter(item => item.trades > 0);
+
+    const gradeOrder = ['A+', 'A', 'B', 'C', 'Gamble', 'Unrated'] as const;
+    const gradeAnalytics = gradeOrder.map(grade => {
+      const gradeTrades = sortedTrades.filter(trade => (getTradeGrade(trade) || 'Unrated') === grade);
+      return { grade, ...summarizeSegment(gradeTrades) };
+    }).filter(item => item.trades > 0);
+
+    const cleanTrades = sortedTrades.filter(trade => !trade.mistakes?.some(mistake => mistake !== 'None'));
+    const taggedTrades = sortedTrades.filter(trade => trade.mistakes?.some(mistake => mistake !== 'None'));
+    const cleanPerformance = summarizeSegment(cleanTrades);
+    const taggedPerformance = summarizeSegment(taggedTrades);
+
+    const journaledTrades = sortedTrades.filter(trade => trade.journalingStatus === 'COMPLETE' || Boolean(getTradeGrade(trade)));
+    const notesTrades = sortedTrades.filter(trade => Boolean(trade.notes?.trim()));
+    const screenshotTrades = sortedTrades.filter(trade => Boolean(trade.htfScreenshot || trade.ltfScreenshot));
+    const ruleTrackedTrades = sortedTrades.filter(trade => {
+      const storedMax = trade.setupRuleMaxScore || 0;
+      const snapshotMax = trade.setupRuleSnapshot?.length || 0;
+      const checkedMax = Object.keys(trade.setupRuleChecks || {}).length;
+      return Math.max(storedMax, snapshotMax, checkedMax) > 0;
+    });
+
+    let adherenceTotal = 0;
+    let qualityGateEligible = 0;
+    let qualityGatePassed = 0;
+    ruleTrackedTrades.forEach(trade => {
+      const checks = Object.values(trade.setupRuleChecks || {});
+      const maxScore = trade.setupRuleMaxScore || trade.setupRuleSnapshot?.length || checks.length;
+      const score = trade.setupRuleScore !== undefined
+        ? trade.setupRuleScore
+        : checks.filter(Boolean).length;
+      if (maxScore > 0) adherenceTotal += (score / maxScore) * 100;
+      if (trade.setupMinChecklistScore !== undefined) {
+        qualityGateEligible += 1;
+        if (score >= trade.setupMinChecklistScore) qualityGatePassed += 1;
+      }
+    });
+
+    const totalFees = sortedTrades.reduce((sum, trade) => sum + getTradeTotalFees(trade), 0);
+    const grossMovement = sortedTrades.reduce((sum, trade) => sum + Math.abs(trade.pnl || 0), 0);
+    const recentTrades = sortedTrades.slice(-5);
+    const previousTrades = sortedTrades.slice(-10, -5);
+    const recentPerformance = summarizeSegment(recentTrades);
+    const previousPerformance = summarizeSegment(previousTrades);
+
+    let streakType: 'WIN' | 'LOSS' | 'NONE' = 'NONE';
+    let streakCount = 0;
+    for (let index = sortedTrades.length - 1; index >= 0; index -= 1) {
+      const pnl = getTradeNetPnl(sortedTrades[index]);
+      if (sortedTrades[index].status === 'BREAKEVEN' || (pnl > -10 && pnl < 10)) break;
+      const result = pnl > 0 ? 'WIN' : 'LOSS';
+      if (streakType === 'NONE') streakType = result;
+      if (result !== streakType) break;
+      streakCount += 1;
+    }
+
+    const dailyPnl = new Map<string, number>();
+    sortedTrades.forEach(trade => {
+      const day = getTradeDisplayDateTime(trade).date;
+      dailyPnl.set(day, (dailyPnl.get(day) || 0) + getTradeNetPnl(trade));
+    });
+    const profitableDays = Array.from(dailyPnl.values()).filter(value => value > 0).length;
+
+    return {
+      directionAnalytics,
+      gradeAnalytics,
+      cleanPerformance,
+      taggedPerformance,
+      hasProcessComparison: cleanPerformance.trades > 0 && taggedPerformance.trades > 0,
+      processGap: cleanPerformance.avgPnl - taggedPerformance.avgPnl,
+      journalCompletionPct: sortedTrades.length ? (journaledTrades.length / sortedTrades.length) * 100 : 0,
+      notesCoveragePct: sortedTrades.length ? (notesTrades.length / sortedTrades.length) * 100 : 0,
+      screenshotCoveragePct: sortedTrades.length ? (screenshotTrades.length / sortedTrades.length) * 100 : 0,
+      ruleTrackedCount: ruleTrackedTrades.length,
+      ruleAdherencePct: ruleTrackedTrades.length ? adherenceTotal / ruleTrackedTrades.length : 0,
+      qualityGatePassPct: qualityGateEligible ? (qualityGatePassed / qualityGateEligible) * 100 : null,
+      totalFees,
+      feeDragPct: grossMovement > 0 ? (totalFees / grossMovement) * 100 : 0,
+      recentPerformance,
+      previousPerformance,
+      recentDelta: previousTrades.length ? recentPerformance.avgPnl - previousPerformance.avgPnl : null,
+      streakType,
+      streakCount,
+      profitableDayPct: dailyPnl.size ? (profitableDays / dailyPnl.size) * 100 : 0,
+      tradingDays: dailyPnl.size,
+    };
+  }, [sortedTrades]);
+
+  // 9. ADVANCED INSTITUTIONAL STATISTICS (MATHEMATICALLY REVISED)
   const advancedStats = useMemo(() => {
     const totalTrades = sortedTrades.length;
     if (totalTrades === 0) {
@@ -1335,8 +1446,40 @@ export default function InsightsView({
       });
     }
 
+    const comparableDirections = executionQualityAnalytics.directionAnalytics.filter(item => item.trades >= 3);
+    if (comparableDirections.length === 2) {
+      const [stronger, weaker] = [...comparableDirections].sort((a, b) => b.avgPnl - a.avgPnl);
+      list.push({
+        title: 'Directional Execution Gap',
+        confidence: Math.min(88, 45 + Math.min(stronger.trades, weaker.trades) * 5),
+        priority: 'MEDIUM',
+        evidence: `${stronger.direction} trades average ${formatVal(stronger.avgPnl, { showSign: true })}, versus ${formatVal(weaker.avgPnl, { showSign: true })} for ${weaker.direction} trades.`,
+        recommendation: `Compare setup, session, and checklist quality across both directions before restricting ${weaker.direction} executions.`
+      });
+    }
+
+    if (executionQualityAnalytics.journalCompletionPct < 80) {
+      list.push({
+        title: 'Journal Evidence Gap',
+        confidence: 95,
+        priority: 'HIGH',
+        evidence: `${executionQualityAnalytics.journalCompletionPct.toFixed(0)}% of closed trades are marked complete or carry an execution grade.`,
+        recommendation: 'Complete grades and reflections for older trades before using this sample for strategy or position-sizing decisions.'
+      });
+    }
+
+    if (executionQualityAnalytics.hasProcessComparison && executionQualityAnalytics.processGap > 0) {
+      list.push({
+        title: 'Clean Execution Premium',
+        confidence: Math.min(90, 45 + Math.min(executionQualityAnalytics.cleanPerformance.trades, executionQualityAnalytics.taggedPerformance.trades) * 4),
+        priority: 'HIGH',
+        evidence: `Trades without a recorded mistake average ${formatVal(executionQualityAnalytics.processGap)} more than mistake-tagged trades.`,
+        recommendation: 'Identify the repeatable preparation and management behaviors shared by clean trades, then make them part of the pre-trade checklist.'
+      });
+    }
+
     return list;
-  }, [sortedTrades, kpis, behavioralAnalytics, formatVal]);
+  }, [sortedTrades, kpis, behavioralAnalytics, executionQualityAnalytics, formatVal]);
 
   const sampleAssessment = kpis.totalTrades >= 30
     ? { label: 'Decision-ready', tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', note: '30+ closed trades gives patterns useful weight.' }
@@ -1395,6 +1538,14 @@ export default function InsightsView({
       `Max Drawdown %,${kpis.maxDrawdownPct.toFixed(2)}%`,
       `Recovery Factor,${kpis.recoveryFactor.toFixed(2)}`,
       `Discipline Score %,${kpis.disciplineScore.toFixed(2)}%`,
+      `Journal Completion %,${executionQualityAnalytics.journalCompletionPct.toFixed(2)}%`,
+      `Written Reflection Coverage %,${executionQualityAnalytics.notesCoveragePct.toFixed(2)}%`,
+      `Screenshot Coverage %,${executionQualityAnalytics.screenshotCoveragePct.toFixed(2)}%`,
+      `Playbook Rule Adherence %,${executionQualityAnalytics.ruleAdherencePct.toFixed(2)}%`,
+      `Recorded Fees,${executionQualityAnalytics.totalFees.toFixed(2)}`,
+      `Fee Drag %,${executionQualityAnalytics.feeDragPct.toFixed(2)}%`,
+      `Profitable Trading Days %,${executionQualityAnalytics.profitableDayPct.toFixed(2)}%`,
+      ...executionQualityAnalytics.directionAnalytics.map(item => `${item.direction} Expectancy,${item.avgPnl.toFixed(2)}`),
       `SQN,${advancedStats.sqn.toFixed(2)}`,
       `Sharpe Ratio,${advancedStats.sharpe.toFixed(2)}`,
       `Sortino Ratio,${advancedStats.sortino.toFixed(2)}`
@@ -2321,12 +2472,206 @@ export default function InsightsView({
         </div>
       </section>
 
-      {/* SECTION 9: ADVANCED INSTITUTIONAL STATISTICS TABLE */}
+      {/* SECTION 9: EXECUTION QUALITY & JOURNAL HEALTH */}
+      <section className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-slate-400 font-sans">
+            <CheckCircle2 size={14} className="text-violet-600" />
+            Section 9 — Execution Quality & Journal Health
+          </h2>
+          <span className="w-fit rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-4xs font-black uppercase tracking-wider text-violet-700">
+            Process intelligence
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article className="rounded-2xl border border-violet-100 bg-white p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Journal completion</span>
+              <CheckCircle2 size={15} className="text-violet-500" />
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <span className="font-mono text-xl font-black text-slate-900">{executionQualityAnalytics.journalCompletionPct.toFixed(0)}%</span>
+              <span className="text-4xs font-bold text-slate-400">graded / complete</span>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-violet-500" style={{ width: `${executionQualityAnalytics.journalCompletionPct}%` }} />
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Playbook adherence</span>
+              <Target size={15} className="text-emerald-500" />
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <span className="font-mono text-xl font-black text-slate-900">
+                {executionQualityAnalytics.ruleTrackedCount ? `${executionQualityAnalytics.ruleAdherencePct.toFixed(0)}%` : 'N/A'}
+              </span>
+              <span className="text-4xs font-bold text-slate-400">{executionQualityAnalytics.ruleTrackedCount} tracked</span>
+            </div>
+            <p className="mt-2 text-4xs leading-relaxed text-slate-500">
+              {executionQualityAnalytics.qualityGatePassPct === null
+                ? 'Link checklist rules to trades to measure execution fidelity.'
+                : `${executionQualityAnalytics.qualityGatePassPct.toFixed(0)}% passed the saved playbook quality gate.`}
+            </p>
+          </article>
+
+          <article className="rounded-2xl border border-amber-100 bg-white p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Recorded fee drag</span>
+              <Coins size={15} className="text-amber-500" />
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <span className="font-mono text-xl font-black text-slate-900">{formatVal(executionQualityAnalytics.totalFees)}</span>
+              <span className={`text-4xs font-black ${executionQualityAnalytics.feeDragPct > 10 ? 'text-rose-600' : 'text-amber-700'}`}>
+                {executionQualityAnalytics.feeDragPct.toFixed(1)}% drag
+              </span>
+            </div>
+            <p className="mt-2 text-4xs leading-relaxed text-slate-500">Share of absolute gross P&amp;L movement consumed by recorded costs.</p>
+          </article>
+
+          <article className="rounded-2xl border border-blue-100 bg-white p-4 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-3xs font-extrabold uppercase tracking-wider text-slate-500">Recent form</span>
+              <Activity size={15} className="text-blue-500" />
+            </div>
+            <div className="mt-2 flex items-end justify-between gap-3">
+              <span className={`font-mono text-xl font-black ${executionQualityAnalytics.recentPerformance.avgPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {formatVal(executionQualityAnalytics.recentPerformance.avgPnl, { showSign: true })}
+              </span>
+              <span className="text-4xs font-bold text-slate-400">avg · last {executionQualityAnalytics.recentPerformance.trades}</span>
+            </div>
+            <p className="mt-2 text-4xs leading-relaxed text-slate-500">
+              {executionQualityAnalytics.recentDelta === null
+                ? 'Log 10 closed trades to unlock a prior-period comparison.'
+                : `${executionQualityAnalytics.recentDelta >= 0 ? 'Improved' : 'Cooled'} ${formatVal(Math.abs(executionQualityAnalytics.recentDelta))} per trade vs the prior five.`}
+            </p>
+          </article>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+          <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-xs lg:col-span-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Directional Edge</h3>
+                <p className="mt-1 text-4xs leading-relaxed text-slate-500">Compare long and short execution without mixing open trades.</p>
+              </div>
+              <BarChart3 size={16} className="text-blue-500" />
+            </div>
+            <div className="mt-4 space-y-3">
+              {executionQualityAnalytics.directionAnalytics.map(item => (
+                <div key={item.direction} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`rounded-lg px-2.5 py-1 text-3xs font-black ${item.direction === 'BUY' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {item.direction}
+                    </span>
+                    <span className={`font-mono text-sm font-black ${item.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatVal(item.pnl, { showSign: true })}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-3">
+                    <div><span className="block text-4xs font-bold uppercase text-slate-400">Trades</span><strong className="text-2xs text-slate-800">{item.trades}</strong></div>
+                    <div><span className="block text-4xs font-bold uppercase text-slate-400">Win rate</span><strong className="text-2xs text-slate-800">{item.winRate.toFixed(0)}%</strong></div>
+                    <div><span className="block text-4xs font-bold uppercase text-slate-400">Expectancy</span><strong className={item.avgPnl >= 0 ? 'text-2xs text-emerald-600' : 'text-2xs text-rose-600'}>{formatVal(item.avgPnl, { showSign: true })}</strong></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-xs lg:col-span-7">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Performance by Journal Grade</h3>
+                <p className="mt-1 text-4xs leading-relaxed text-slate-500">Tests whether higher-quality execution grades actually produce stronger outcomes.</p>
+              </div>
+              <Target size={16} className="text-violet-500" />
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[500px] text-left text-2xs">
+                <thead className="border-b border-slate-100 text-4xs font-black uppercase tracking-wider text-slate-400">
+                  <tr><th className="pb-2">Grade</th><th className="pb-2">Trades</th><th className="pb-2">Win rate</th><th className="pb-2">Avg / trade</th><th className="pb-2 text-right">Net P&amp;L</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {executionQualityAnalytics.gradeAnalytics.map(item => (
+                    <tr key={item.grade} className="hover:bg-slate-50/70">
+                      <td className="py-3"><span className={`inline-flex min-w-12 justify-center rounded-lg px-2 py-1 font-black ${item.grade === 'A+' || item.grade === 'A' ? 'bg-emerald-50 text-emerald-700' : item.grade === 'Gamble' ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>{item.grade}</span></td>
+                      <td className="py-3 font-mono font-bold text-slate-700">{item.trades}</td>
+                      <td className="py-3 font-mono font-bold text-slate-700">{item.winRate.toFixed(0)}%</td>
+                      <td className={`py-3 font-mono font-bold ${item.avgPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatVal(item.avgPnl, { showSign: true })}</td>
+                      <td className={`py-3 text-right font-mono font-black ${item.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatVal(item.pnl, { showSign: true })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-xs lg:col-span-7">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Clean Execution vs Tagged Mistakes</h3>
+                <p className="mt-1 text-4xs leading-relaxed text-slate-500">A direct comparison of trades with no mistake tag and trades carrying at least one tag.</p>
+              </div>
+              <span className={`w-fit rounded-full px-2.5 py-1 text-4xs font-black ${executionQualityAnalytics.hasProcessComparison && executionQualityAnalytics.processGap >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                {executionQualityAnalytics.hasProcessComparison ? `${formatVal(Math.abs(executionQualityAnalytics.processGap))} avg gap` : 'More data needed'}
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                { label: 'Clean execution', data: executionQualityAnalytics.cleanPerformance, tone: 'emerald' },
+                { label: 'Mistake tagged', data: executionQualityAnalytics.taggedPerformance, tone: 'rose' },
+              ].map(item => (
+                <div key={item.label} className={`rounded-2xl border p-4 ${item.tone === 'emerald' ? 'border-emerald-100 bg-emerald-50/50' : 'border-rose-100 bg-rose-50/50'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-3xs font-black uppercase tracking-wider ${item.tone === 'emerald' ? 'text-emerald-700' : 'text-rose-700'}`}>{item.label}</span>
+                    <span className="text-4xs font-bold text-slate-500">{item.data.trades} trades</span>
+                  </div>
+                  <div className={`mt-2 font-mono text-lg font-black ${item.data.avgPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatVal(item.data.avgPnl, { showSign: true })}<span className="ml-1 text-4xs font-bold text-slate-400">avg</span></div>
+                  <div className="mt-2 flex items-center justify-between text-4xs font-bold text-slate-500"><span>{item.data.winRate.toFixed(0)}% win rate</span><span>{formatVal(item.data.pnl, { showSign: true })} net</span></div>
+                </div>
+              ))}
+            </div>
+            <div className={`mt-3 rounded-xl border px-3.5 py-2.5 text-3xs leading-relaxed ${executionQualityAnalytics.hasProcessComparison && executionQualityAnalytics.processGap >= 0 ? 'border-emerald-100 bg-emerald-50/60 text-emerald-800' : 'border-amber-100 bg-amber-50/70 text-amber-900'}`}>
+              <strong>{executionQualityAnalytics.hasProcessComparison && executionQualityAnalytics.processGap >= 0 ? 'Process advantage:' : 'Review signal:'}</strong>{' '}
+              {!executionQualityAnalytics.hasProcessComparison
+                ? 'Both clean and mistake-tagged trades are needed before a reliable process comparison can be shown.'
+                : executionQualityAnalytics.processGap >= 0
+                  ? `Clean trades are averaging ${formatVal(executionQualityAnalytics.processGap)} more per execution. Protect the routines behind them.`
+                  : 'Tagged trades currently have the higher average. Review tag accuracy and sample size before interpreting the relationship.'}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-100 bg-white p-5 shadow-xs lg:col-span-5">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Journal Evidence Coverage</h3>
+              <p className="mt-1 text-4xs leading-relaxed text-slate-500">Measures whether the context needed for a useful review is being captured.</p>
+            </div>
+            <div className="mt-4 space-y-4">
+              {[
+                { label: 'Completed or graded', value: executionQualityAnalytics.journalCompletionPct, color: 'bg-violet-500' },
+                { label: 'Written reflections', value: executionQualityAnalytics.notesCoveragePct, color: 'bg-blue-500' },
+                { label: 'Chart screenshots', value: executionQualityAnalytics.screenshotCoveragePct, color: 'bg-amber-500' },
+              ].map(item => (
+                <div key={item.label}>
+                  <div className="mb-1.5 flex items-center justify-between text-3xs font-bold"><span className="text-slate-600">{item.label}</span><span className="font-mono text-slate-800">{item.value.toFixed(0)}%</span></div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.value}%` }} /></div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+              <div><span className="block text-4xs font-bold uppercase tracking-wider text-slate-400">Profitable days</span><strong className="mt-1 block font-mono text-base text-slate-900">{executionQualityAnalytics.profitableDayPct.toFixed(0)}%</strong><span className="text-4xs text-slate-500">of {executionQualityAnalytics.tradingDays} active days</span></div>
+              <div><span className="block text-4xs font-bold uppercase tracking-wider text-slate-400">Current streak</span><strong className={`mt-1 block font-mono text-base ${executionQualityAnalytics.streakType === 'WIN' ? 'text-emerald-600' : executionQualityAnalytics.streakType === 'LOSS' ? 'text-rose-600' : 'text-slate-900'}`}>{executionQualityAnalytics.streakCount || '—'} {executionQualityAnalytics.streakCount ? executionQualityAnalytics.streakType.toLowerCase() : ''}</strong><span className="text-4xs text-slate-500">closed executions</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      {/* SECTION 10: ADVANCED INSTITUTIONAL STATISTICS TABLE */}
       <section className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest font-sans flex items-center gap-1.5">
             <Scale size={14} className="text-blue-600" />
-            Section 9 — Advanced Institutional Performance Statistics Table
+            Section 10 — Advanced Institutional Performance Statistics Table
           </h2>
           <span className="text-3xs text-slate-400 font-mono">Bloomberg & Quant Grade</span>
         </div>
