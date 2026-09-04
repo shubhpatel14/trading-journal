@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Loader2,
   ClipboardCheck,
+  ListChecks,
   Coins,
   Heart,
   Brain
@@ -61,6 +62,7 @@ import LoginPage from './components/LoginPage';
 
 // Lazy-loaded view components for bundle optimization
 const JournalView = React.lazy(() => import('./components/JournalView'));
+const TradeReviewView = React.lazy(() => import('./components/TradeReviewView'));
 const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
 const PlanningReviewView = React.lazy(() => import('./components/PlanningReviewView'));
@@ -1575,6 +1577,7 @@ export default function App() {
                 { id: 'setups', label: 'Playbooks', icon: FolderOpen },
                 { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
+                { id: 'trade-review', label: 'Trade Review', icon: ListChecks },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
                 { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit }
               ].map((tab) => {
@@ -1677,6 +1680,7 @@ export default function App() {
             { id: 'setups', label: 'Playbooks', icon: FolderOpen },
             { id: 'plans', label: 'Plan + Review', icon: ClipboardCheck },
             { id: 'journal', label: 'Journal', icon: BookOpen },
+            { id: 'trade-review', label: 'Review', icon: ListChecks },
             { id: 'calendar', label: 'Calendar', icon: Calendar },
             { id: 'insights', label: 'Insights', icon: BrainCircuit }
           ].map((tab) => {
@@ -2222,6 +2226,14 @@ export default function App() {
               }}
               initialDateFilter={selectedJournalDate}
               onClearDateFilter={() => setSelectedJournalDate(null)}
+            />
+          )}
+
+          {currentTab === 'trade-review' && (
+            <TradeReviewView
+              trades={filteredTrades}
+              accounts={accounts}
+              onEditTrade={handleEditTrade}
             />
           )}
 

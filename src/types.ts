@@ -113,6 +113,8 @@ export interface Trade {
   /** @deprecated Use tradeGrade. */
   maxChecklistScore?: number;
   journalingStatus?: 'COMPLETE' | 'PENDING';
+  /** Optional timestamp set after the trader completes a focused post-trade review. */
+  reviewedAt?: string;
 }
 
 export function getTradeCommission(size: number, commissionOverride?: number, accountRate: number = 7): number {
