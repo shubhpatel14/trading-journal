@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
   Filter, 
@@ -31,7 +31,8 @@ import {
   Award,
   Check,
   Coins,
-  Layers3
+  Layers3,
+  Minus
 } from 'lucide-react';
 import { Trade, TradeGrade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
@@ -116,6 +117,220 @@ const MOCK_JOURNAL_SCREENSHOTS = [
   { name: 'HTF Daily Supply Sweep', url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80' },
   { name: 'LTF 15m entry trigger confirmation', url: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80' }
 ];
+
+interface FloatingJournalWindowProps {
+  title: string;
+  subtitle?: string;
+  defaultWidth: number;
+  defaultHeight: number;
+  minWidth?: number;
+  minHeight?: number;
+  accent?: 'blue' | 'purple';
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+/**
+ * A modeless desktop-style window used by the journal editors. It deliberately
+ * has no full-screen backdrop so the trade list remains visible while writing.
+ */
+function FloatingJournalWindow({
+  title,
+  subtitle,
+  defaultWidth,
+  defaultHeight,
+  minWidth = 420,
+  minHeight = 320,
+  accent = 'blue',
+  onClose,
+  children,
+}: FloatingJournalWindowProps) {
+  const getInitialRect = () => {
+    const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
+    const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
+    const margin = viewportWidth < 640 ? 8 : 20;
+    const width = Math.min(defaultWidth, viewportWidth - margin * 2);
+    const height = Math.min(defaultHeight, viewportHeight - margin * 2);
+
+    return {
+      x: Math.max(margin, (viewportWidth - width) / 2),
+      y: Math.max(margin, (viewportHeight - height) / 2),
+      width,
+      height,
+    };
+  };
+
+  const [rect, setRect] = useState(getInitialRect);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const interactionRef = useRef<{
+    mode: 'drag' | 'resize';
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startRect: typeof rect;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      setRect(current => {
+        const margin = window.innerWidth < 640 ? 8 : 12;
+        const width = Math.min(current.width, window.innerWidth - margin * 2);
+        const height = Math.min(current.height, window.innerHeight - margin * 2);
+        return {
+          width,
+          height,
+          x: Math.min(Math.max(margin, current.x), Math.max(margin, window.innerWidth - width - margin)),
+          y: Math.min(Math.max(margin, current.y), Math.max(margin, window.innerHeight - (isMinimized ? 48 : height) - margin)),
+        };
+      });
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('resize', handleViewportResize);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('resize', handleViewportResize);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMinimized, onClose]);
+
+  const beginInteraction = (event: React.PointerEvent, mode: 'drag' | 'resize') => {
+    if (event.button !== 0) return;
+    interactionRef.current = {
+      mode,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect: rect,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const continueInteraction = (event: React.PointerEvent) => {
+    const interaction = interactionRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - interaction.startX;
+    const dy = event.clientY - interaction.startY;
+    const margin = window.innerWidth < 640 ? 8 : 12;
+
+    if (interaction.mode === 'drag') {
+      const visibleHeight = isMinimized ? 48 : interaction.startRect.height;
+      setRect(current => ({
+        ...current,
+        x: Math.min(
+          Math.max(margin, interaction.startRect.x + dx),
+          Math.max(margin, window.innerWidth - interaction.startRect.width - margin),
+        ),
+        y: Math.min(
+          Math.max(margin, interaction.startRect.y + dy),
+          Math.max(margin, window.innerHeight - visibleHeight - margin),
+        ),
+      }));
+      return;
+    }
+
+    const effectiveMinWidth = Math.min(minWidth, window.innerWidth - margin * 2);
+    const effectiveMinHeight = Math.min(minHeight, window.innerHeight - margin * 2);
+    setRect(current => ({
+      ...current,
+      width: Math.min(
+        Math.max(effectiveMinWidth, interaction.startRect.width + dx),
+        window.innerWidth - interaction.startRect.x - margin,
+      ),
+      height: Math.min(
+        Math.max(effectiveMinHeight, interaction.startRect.height + dy),
+        window.innerHeight - interaction.startRect.y - margin,
+      ),
+    }));
+  };
+
+  const endInteraction = (event: React.PointerEvent) => {
+    if (interactionRef.current?.pointerId !== event.pointerId) return;
+    interactionRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const accentClasses = accent === 'purple'
+    ? 'bg-purple-50/95 border-purple-100 text-purple-700'
+    : 'bg-blue-50/95 border-blue-100 text-blue-700';
+
+  return (
+    <section
+      role="dialog"
+      aria-modal="false"
+      aria-label={title}
+      className="fixed z-[60] flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-scaleUp"
+      style={{
+        left: rect.x,
+        top: rect.y,
+        width: rect.width,
+        height: isMinimized ? 48 : rect.height,
+        maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'calc(100vh - 16px)',
+      }}
+    >
+      <header
+        className={`flex h-12 shrink-0 touch-none select-none items-center justify-between gap-3 border-b px-3.5 ${accentClasses} cursor-move`}
+        onPointerDown={(event) => beginInteraction(event, 'drag')}
+        onPointerMove={continueInteraction}
+        onPointerUp={endInteraction}
+        onPointerCancel={endInteraction}
+        onDoubleClick={() => setIsMinimized(value => !value)}
+      >
+        <div className="min-w-0">
+          <h3 className="truncate text-xs font-extrabold text-slate-900">{title}</h3>
+          {subtitle && <p className="truncate text-4xs font-semibold text-slate-500">{subtitle}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(value => !value)}
+            className="rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-800"
+            title={isMinimized ? 'Restore journal window' : 'Minimize journal window'}
+            aria-label={isMinimized ? 'Restore journal window' : 'Minimize journal window'}
+          >
+            <Minus size={15} strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-slate-500 transition hover:bg-rose-100 hover:text-rose-700"
+            title="Close journal window"
+            aria-label="Close journal window"
+          >
+            <X size={15} strokeWidth={2.5} />
+          </button>
+        </div>
+      </header>
+
+      {!isMinimized && (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
+            {children}
+          </div>
+          <div
+            role="separator"
+            aria-label="Resize journal window"
+            className="absolute bottom-0 right-0 h-5 w-5 cursor-se-resize touch-none"
+            onPointerDown={(event) => beginInteraction(event, 'resize')}
+            onPointerMove={continueInteraction}
+            onPointerUp={endInteraction}
+            onPointerCancel={endInteraction}
+          >
+            <span className="absolute bottom-1 right-1 h-2.5 w-2.5 border-b-2 border-r-2 border-slate-400" />
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
 export default function JournalView({
   trades,
@@ -951,23 +1166,16 @@ export default function JournalView({
 
       {/* Logging Form (Add / Edit) */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white border border-slate-100 p-6 rounded-2xl shadow-sm space-y-6 animate-slideDown">
-          <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-            <div>
-              <h3 className="text-base font-bold text-slate-800">
-                {editingId ? 'Edit Logged Trade Details' : 'Log Trade Execution'}
-              </h3>
-              <p className="text-4xs text-slate-450 font-mono">PERSISTED SECURELY IN CACHE</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleCloseForm}
-              className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
+        <FloatingJournalWindow
+          title={editingId ? 'Edit Logged Trade Details' : 'Log Trade Execution'}
+          subtitle="Drag to move · use the lower-right corner to resize"
+          defaultWidth={780}
+          defaultHeight={640}
+          minWidth={440}
+          minHeight={360}
+          onClose={handleCloseForm}
+        >
+        <form onSubmit={handleSubmit} className="space-y-6 p-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             {/* Account scope selection */}
             <div>
@@ -1559,6 +1767,7 @@ export default function JournalView({
             </div>
           </div>
         </form>
+        </FloatingJournalWindow>
       )}
 
       {/* Filtered Date Banner */}
@@ -2173,27 +2382,25 @@ export default function JournalView({
 
       {/* Quick Journaling / Grading Modal */}
       {journalingTrade && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto animate-scaleUp">
-            <div className="flex justify-between items-start pb-4 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2 text-2xs font-bold text-purple-600 uppercase tracking-wider">
-                  <Award size={14} />
-                  Trade Journal Grading
-                </div>
-                <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
-                  {journalingTrade.asset} ({journalingTrade.direction}) — {journalingTrade.date}
-                </h3>
-                <p className="text-xs text-slate-500 font-sans">
-                  Setup: <strong className="text-slate-800">{journalingTrade.setup}</strong> • PnL: <span className={journalingTrade.pnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>${journalingTrade.pnl}</span>
-                </p>
+        <FloatingJournalWindow
+          title={`Journal ${journalingTrade.asset} (${journalingTrade.direction})`}
+          subtitle={`${journalingTrade.date} · ${journalingTrade.setup}`}
+          defaultWidth={560}
+          defaultHeight={500}
+          minWidth={380}
+          minHeight={320}
+          accent="purple"
+          onClose={() => setJournalingTrade(null)}
+        >
+          <div className="space-y-5 p-5">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-purple-100 bg-purple-50/60 px-3 py-2">
+              <div className="flex items-center gap-2 text-2xs font-bold uppercase tracking-wider text-purple-700">
+                <Award size={14} />
+                Trade Journal Grading
               </div>
-              <button
-                onClick={() => setJournalingTrade(null)}
-                className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg cursor-pointer transition"
-              >
-                <X size={18} />
-              </button>
+              <span className={journalingTrade.pnl >= 0 ? 'text-xs font-bold text-emerald-600' : 'text-xs font-bold text-rose-600'}>
+                PnL ${journalingTrade.pnl}
+              </span>
             </div>
 
             <TradeGradeSlider value={journalingGrade} onChange={setJournalingGrade} compact />
@@ -2266,7 +2473,7 @@ export default function JournalView({
               </button>
             </div>
           </div>
-        </div>
+        </FloatingJournalWindow>
       )}
 
       {/* Manage Rules Modal */}
