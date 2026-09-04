@@ -476,9 +476,7 @@ export const INITIAL_TRADES: Trade[] = [
     notes: 'Exited slightly early before TP hit as price stalled at prior demand zone. Very clean trade matching the 15m setup plan.',
     htfScreenshot: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80',
     ltfScreenshot: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80',
-    checklist: { 'rule-1': true, 'rule-2': true, 'rule-3': true, 'rule-4': true, 'rule-5': true, 'rule-6': false, 'rule-7': true, 'rule-8': true },
-    checklistScore: 7,
-    maxChecklistScore: 8,
+    tradeGrade: 'A',
     journalingStatus: 'COMPLETE'
   },
   {
@@ -503,9 +501,7 @@ export const INITIAL_TRADES: Trade[] = [
     mistakes: ['None'],
     notes: 'Clean continuation pattern. Took partials at +2R.',
     htfScreenshot: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=600&q=80',
-    checklist: { 'rule-1': true, 'rule-2': true, 'rule-3': true, 'rule-4': false, 'rule-5': true, 'rule-6': true, 'rule-7': true, 'rule-8': false },
-    checklistScore: 6,
-    maxChecklistScore: 8,
+    tradeGrade: 'A',
     journalingStatus: 'COMPLETE'
   },
   {

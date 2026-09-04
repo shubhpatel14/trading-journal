@@ -52,6 +52,7 @@ import {
   onSnapshot
 } from './lib/firebase';
 import { getAllIDB, saveAllIDB, saveIDB, deleteIDB, STORES } from './lib/indexedDB';
+import { getTradeGrade } from './utils/tradeGrade';
 
 // Import core sub-components
 import Dashboard from './components/Dashboard';
@@ -127,11 +128,12 @@ const hasMeaningfulMistakes = (mistakes?: string[]) => (
 
 const isTradeJournalComplete = (trade: Partial<Trade>) => (
   trade.journalingStatus === 'COMPLETE' ||
-  (trade.checklistScore !== undefined && trade.checklistScore > 0)
+  Boolean(getTradeGrade(trade))
 );
 
 const normalizeFirestoreTrade = (trade: Trade): Trade => ({
   ...trade,
+  tradeGrade: getTradeGrade(trade),
   notes: trade.notes || '',
   mistakes: Array.isArray(trade.mistakes) ? trade.mistakes : [],
   htfScreenshot: trade.htfScreenshot || '',
@@ -163,12 +165,10 @@ const mergeRemoteTradeWithLocalJournal = (remoteTrade: Trade, localTrade: Trade)
     shouldWriteBack = true;
   }
 
-  const localHasChecklist = localTrade.checklist && Object.keys(localTrade.checklist).length > 0;
-  const remoteHasChecklist = remoteTrade.checklist && Object.keys(remoteTrade.checklist).length > 0;
-  if (localHasChecklist && !remoteHasChecklist) {
-    merged.checklist = localTrade.checklist;
-    merged.checklistScore = localTrade.checklistScore;
-    merged.maxChecklistScore = localTrade.maxChecklistScore;
+  const localGrade = getTradeGrade(localTrade);
+  const remoteGrade = getTradeGrade(remoteTrade);
+  if (localGrade && !remoteGrade) {
+    merged.tradeGrade = localGrade;
     shouldWriteBack = true;
   }
 
@@ -237,14 +237,14 @@ export default function App() {
     if (isGuest) {
       const savedGuest = sessionStorage.getItem('TRADEPLAN_GUEST_TRADES');
       if (savedGuest) {
-        try { return JSON.parse(savedGuest); } catch (e) {}
+        try { return JSON.parse(savedGuest).map(normalizeFirestoreTrade); } catch (e) {}
       }
     }
     const savedLocal = localStorage.getItem('TRADEPLAN_TRADES');
     if (savedLocal) {
-      try { return JSON.parse(savedLocal); } catch (e) {}
+      try { return JSON.parse(savedLocal).map(normalizeFirestoreTrade); } catch (e) {}
     }
-    return INITIAL_TRADES;
+    return INITIAL_TRADES.map(normalizeFirestoreTrade);
   });
 
   // Plans State
@@ -559,10 +559,11 @@ export default function App() {
         ]);
 
         if (idbTrades.length > 0) {
-          setTrades(idbTrades);
+          setTrades(idbTrades.map(normalizeFirestoreTrade));
         } else if (INITIAL_TRADES.length > 0) {
-          await saveAllIDB(STORES.TRADES, INITIAL_TRADES);
-          setTrades(INITIAL_TRADES);
+          const normalizedInitialTrades = INITIAL_TRADES.map(normalizeFirestoreTrade);
+          await saveAllIDB(STORES.TRADES, normalizedInitialTrades);
+          setTrades(normalizedInitialTrades);
         }
 
         if (idbPlans.length > 0) {
@@ -751,6 +752,15 @@ export default function App() {
       const batch = writeBatch(db);
       let needsBatchCommit = false;
 
+      // Persist grades derived from the retired generic checklist so every
+      // device and tab reads the same field after the first sync.
+      normalizedLoadedTrades.forEach((trade, index) => {
+        if (trade.tradeGrade && !loadedTrades[index]?.tradeGrade) {
+          batch.set(doc(db, 'users', userId, 'trades', trade.id), cleanForFirestore(trade), { merge: true });
+          needsBatchCommit = true;
+        }
+      });
+
       // Smart collection sync: if Firestore is empty for a collection, sync local items up to Firestore
       if (loadedAccounts.length > 0) {
         setAccounts(loadedAccounts);
@@ -772,6 +782,7 @@ export default function App() {
       if (localTrades.length === 0 && trades.length > 0) {
         localTrades = trades;
       }
+      localTrades = localTrades.map(normalizeFirestoreTrade);
 
       const tradeMap = new Map<string, Trade>();
       normalizedLoadedTrades.forEach(t => {
@@ -1105,7 +1116,7 @@ export default function App() {
 
     // Reset state to clean initial demo data
     setAccounts(INITIAL_ACCOUNTS);
-    setTrades(INITIAL_TRADES);
+    setTrades(INITIAL_TRADES.map(normalizeFirestoreTrade));
     setPlans(INITIAL_TRADE_PLANS);
     setJournalRules(DEFAULT_JOURNAL_RULES);
     setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
@@ -1116,12 +1127,12 @@ export default function App() {
 
   // Event Handlers for Trades
   const handleAddTrade = async (newTrade: Omit<Trade, 'id'>) => {
-    const trade: Trade = {
+    const trade: Trade = normalizeFirestoreTrade({
       ...newTrade,
       id: `trade-${Date.now()}`,
       accountId: newTrade.accountId || (selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id || 'acc-1'),
       journalingStatus: newTrade.journalingStatus || 'COMPLETE'
-    };
+    });
 
     await saveIDB(STORES.TRADES, trade);
 
@@ -1152,7 +1163,7 @@ export default function App() {
     setTrades(prev => {
       const next = prev.map(t => {
         if (t.id === id) {
-          const merged = { ...t, ...updatedFields };
+          const merged = normalizeFirestoreTrade({ ...t, ...updatedFields });
           updatedTrade = merged;
           return merged;
         }
@@ -1277,7 +1288,7 @@ export default function App() {
   // Resets the state back to defaults
   const handleResetData = async () => {
     if (window.confirm('Are you sure you want to reset all data back to the default Gold Spot / FX template? Your current custom logs will be overwritten.')) {
-      setTrades(INITIAL_TRADES);
+      setTrades(INITIAL_TRADES.map(normalizeFirestoreTrade));
       setPlans(INITIAL_TRADE_PLANS);
       setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
       setAccounts(INITIAL_ACCOUNTS);

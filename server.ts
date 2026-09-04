@@ -111,7 +111,7 @@ async function startServer() {
 
       // Summarize trades for the AI prompt
       const tradesSummary = trades.map((t, idx) => 
-        `[Trade #${idx + 1}] Date: ${t.date}, Asset: ${t.asset}, Setup: ${t.setup}, Direction: ${t.direction}, PnL: $${t.pnl}, Status: ${t.status}, Session: ${t.session}, Mistakes: ${t.mistakes.join(', ')}, Notes: "${t.notes}"`
+        `[Trade #${idx + 1}] Date: ${t.date}, Asset: ${t.asset}, Setup: ${t.setup}, Direction: ${t.direction}, PnL: $${t.pnl}, Status: ${t.status}, Session: ${t.session}, Grade: ${t.tradeGrade || 'Not graded'}, Mistakes: ${(t.mistakes || []).join(', ')}, Notes: "${t.notes || ''}"`
       ).join('\n');
 
       const prompt = `You are an elite, highly experienced institutional trading risk manager and trading psychology coach. 

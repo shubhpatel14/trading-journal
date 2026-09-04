@@ -37,6 +37,8 @@ export interface JournalRule {
   weight?: number;
 }
 
+export type TradeGrade = 'A+' | 'A' | 'B' | 'C' | 'Gamble';
+
 export type SetupStatus = 'ACTIVE' | 'ARCHIVED';
 
 /**
@@ -103,10 +105,14 @@ export interface Trade {
   notes: string;
   htfScreenshot?: string; // High Timeframe Screenshot
   ltfScreenshot?: string; // Low Timeframe Screenshot
-  checklist?: Record<string, boolean>; // Map of rule ID to boolean checked state
-  checklistScore?: number; // Number of rules met (score)
-  maxChecklistScore?: number; // Total number of rules applicable
-  journalingStatus?: 'COMPLETE' | 'PENDING'; // Status showing if trade journaling/checklist is complete
+  tradeGrade?: TradeGrade; // Manual execution grade selected in the journal
+  /** @deprecated Legacy generic checklist data retained for backup compatibility. */
+  checklist?: Record<string, boolean>;
+  /** @deprecated Use tradeGrade. */
+  checklistScore?: number;
+  /** @deprecated Use tradeGrade. */
+  maxChecklistScore?: number;
+  journalingStatus?: 'COMPLETE' | 'PENDING';
 }
 
 export function getTradeCommission(size: number, commissionOverride?: number, accountRate: number = 7): number {

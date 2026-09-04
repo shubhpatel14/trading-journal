@@ -25,7 +25,6 @@ import {
   CalendarDays,
   Clock,
   CheckCircle2,
-  CheckSquare,
   Edit3,
   Sliders,
   RotateCcw,
@@ -34,10 +33,12 @@ import {
   Coins,
   Layers3
 } from 'lucide-react';
-import { Trade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
+import { Trade, TradeGrade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
 import { getTradeDisplayDateTime } from '../utils/tradeTime';
+import { getTradeGrade } from '../utils/tradeGrade';
 import ScreenshotUploader from './ScreenshotUploader';
+import TradeGradeSlider from './TradeGradeSlider';
 
 
 interface JournalViewProps {
@@ -200,7 +201,7 @@ export default function JournalView({
   const [session, setSession] = useState<'LONDON' | 'NEW YORK' | 'ASIA'>('NEW YORK');
   const [selectedMistakes, setSelectedMistakes] = useState<string[]>(['None']);
   const [notes, setNotes] = useState('');
-  const [formChecklist, setFormChecklist] = useState<Record<string, boolean>>({});
+  const [tradeGrade, setTradeGrade] = useState<TradeGrade>('B');
   const [setupRuleChecks, setSetupRuleChecks] = useState<Record<string, boolean>>({});
   const [formJournalingStatus, setFormJournalingStatus] = useState<'COMPLETE' | 'PENDING'>('PENDING');
 
@@ -238,11 +239,12 @@ export default function JournalView({
 
   // Quick Journal / Score Modal state
   const [journalingTrade, setJournalingTrade] = useState<Trade | null>(null);
-  const [journalingChecklist, setJournalingChecklist] = useState<Record<string, boolean>>({});
+  const [journalingGrade, setJournalingGrade] = useState<TradeGrade>('B');
   const [journalingNotes, setJournalingNotes] = useState('');
   const [journalingMistakes, setJournalingMistakes] = useState<string[]>(['None']);
 
-  // Manage Rules Modal state
+  // Legacy rule management state is retained for existing stored preferences,
+  // but the generic rule UI is no longer exposed in the journal.
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [newRuleLabel, setNewRuleLabel] = useState('');
   const [newRuleDesc, setNewRuleDesc] = useState('');
@@ -316,6 +318,7 @@ export default function JournalView({
         : setups.find(item => item.name.toLowerCase() === (prefillTrade.setup || '').toLowerCase());
       setSetupId(matchedSetup?.id);
       setSetupRuleChecks(prefillTrade.setupRuleChecks || {});
+      setTradeGrade(getTradeGrade(prefillTrade) || 'B');
       setDirection(prefillTrade.direction || 'SELL');
       setDate(getLocalDateStr());
       setTime(new Date().toTimeString().slice(0, 5));
@@ -391,7 +394,7 @@ export default function JournalView({
     setHtfScreenshot('');
     setLtfScreenshot('');
     setSelectedMistakes(['None']);
-    setFormChecklist({});
+    setTradeGrade('B');
     setSetupRuleChecks({});
     setFormJournalingStatus('COMPLETE');
     if (selectedAccountId !== 'ALL') {
@@ -435,9 +438,9 @@ export default function JournalView({
     setNotes(trade.notes);
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
-    setFormChecklist(trade.checklist || {});
+    setTradeGrade(getTradeGrade(trade) || 'B');
     setSetupRuleChecks(trade.setupRuleChecks || {});
-    setFormJournalingStatus('COMPLETE');
+    setFormJournalingStatus(trade.journalingStatus || (getTradeGrade(trade) ? 'COMPLETE' : 'PENDING'));
     setShowForm(true);
   };
 
@@ -457,13 +460,6 @@ export default function JournalView({
     setSelectedMistakes(updated);
   };
 
-  const handleToggleFormRule = (ruleId: string) => {
-    setFormChecklist(prev => ({
-      ...prev,
-      [ruleId]: !prev[ruleId]
-    }));
-  };
-
   const handleToggleSetupRule = (index: number) => {
     const key = setupRuleKey(index);
     setSetupRuleChecks(prev => ({
@@ -475,16 +471,9 @@ export default function JournalView({
   // Quick Journal / Score Modal Handlers
   const handleOpenJournalModal = (trade: Trade) => {
     setJournalingTrade(trade);
-    setJournalingChecklist(trade.checklist || {});
+    setJournalingGrade(getTradeGrade(trade) || 'B');
     setJournalingNotes(trade.notes || '');
     setJournalingMistakes(trade.mistakes && trade.mistakes.length > 0 ? trade.mistakes : ['None']);
-  };
-
-  const handleToggleJournalRule = (ruleId: string) => {
-    setJournalingChecklist(prev => ({
-      ...prev,
-      [ruleId]: !prev[ruleId]
-    }));
   };
 
   const handleToggleJournalMistake = (mistake: string) => {
@@ -502,15 +491,11 @@ export default function JournalView({
     setJournalingMistakes(updated);
   };
 
-  const handleSaveJournalScore = () => {
+  const handleSaveJournalGrade = () => {
     if (!journalingTrade) return;
-    const checkedCount = journalRules.filter(r => journalingChecklist[r.id]).length;
-    const maxScore = journalRules.length;
 
     onEditTrade(journalingTrade.id, {
-      checklist: journalingChecklist,
-      checklistScore: checkedCount,
-      maxChecklistScore: maxScore,
+      tradeGrade: journalingGrade,
       journalingStatus: 'COMPLETE',
       notes: journalingNotes,
       mistakes: journalingMistakes
@@ -519,14 +504,10 @@ export default function JournalView({
     setJournalingTrade(null);
   };
 
-  // Manage Rules Handlers
   const handleCreateRuleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRuleLabel.trim()) return;
-    onAddRule({
-      label: newRuleLabel.trim(),
-      description: newRuleDesc.trim() || undefined
-    });
+    onAddRule({ label: newRuleLabel.trim(), description: newRuleDesc.trim() || undefined });
     setNewRuleLabel('');
     setNewRuleDesc('');
   };
@@ -539,29 +520,23 @@ export default function JournalView({
 
   const handleSaveEditRule = (id: string) => {
     if (!editRuleLabel.trim()) return;
-    onEditRule(id, {
-      label: editRuleLabel.trim(),
-      description: editRuleDesc.trim() || undefined
-    });
+    onEditRule(id, { label: editRuleLabel.trim(), description: editRuleDesc.trim() || undefined });
     setEditingRuleId(null);
   };
 
   // Quick toggle trade journaling completion status
   const handleToggleTradeStatus = (trade: Trade) => {
     const isCompleted = getIsTradeCompleted(trade);
-    const newStatus = isCompleted ? 'PENDING' : 'COMPLETE';
-    onEditTrade(trade.id, {
-      journalingStatus: newStatus
-    });
+    if (!isCompleted) {
+      handleOpenJournalModal(trade);
+      return;
+    }
+    onEditTrade(trade.id, { journalingStatus: 'PENDING' });
   };
 
   // Handle submit (save or update)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    const checkedRulesCount = journalRules.filter(r => formChecklist[r.id]).length;
-    const maxScore = journalRules.length;
-    const isEvaluated = Object.keys(formChecklist).length > 0;
 
     const existingTrade = editingTrade || null;
     const parsedSize = parseFloat(size) || 1;
@@ -624,9 +599,7 @@ export default function JournalView({
       notes,
       htfScreenshot: htfScreenshot.trim(),
       ltfScreenshot: ltfScreenshot.trim(),
-      checklist: formChecklist,
-      checklistScore: isEvaluated ? checkedRulesCount : (existingTrade?.checklistScore ?? checkedRulesCount),
-      maxChecklistScore: isEvaluated ? maxScore : (existingTrade?.maxChecklistScore ?? maxScore),
+      tradeGrade,
       journalingStatus: formJournalingStatus || 'COMPLETE'
     };
 
@@ -681,12 +654,12 @@ export default function JournalView({
     const headers = [
       'ID', 'AccountID', 'Date', 'Time', 'Asset', 'Setup', 'Setup ID', 'Direction', 'Entry', 'Exit', 'Size',
       'Stop Loss', 'Take Profit', 'Gross PnL', 'Commission', 'Swap', 'Other Fees', 'Total Fees',
-      'Net PnL', 'Status', 'Session', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot'
+      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot'
     ];
     const rows = trades.map(t => [
       t.id, t.accountId, t.date, t.time, t.asset, t.setup, t.setupId || '', t.direction, t.entryPrice, t.exitPrice, t.size,
       t.sl, t.tp, t.pnl, t.commission ?? '', t.swap ?? '', t.fee ?? '', getTradeTotalFees(t),
-      getTradeNetPnl(t), t.status, t.session, t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
+      getTradeNetPnl(t), t.status, t.session, getTradeGrade(t) ?? '', t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
       t.htfScreenshot || '', t.ltfScreenshot || ''
     ].map(escapeCSV).join(','));
 
@@ -700,7 +673,7 @@ export default function JournalView({
   // JSON preserves all linked playbooks as well as every journal field.
   const handleExportJSON = () => {
     downloadFile(
-      JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), trades, setups }, null, 2),
+      JSON.stringify({ version: 3, exportedAt: new Date().toISOString(), trades, setups }, null, 2),
       `Trading_Journal_Backup_${getLocalDateStr()}.json`,
       'application/json;charset=utf-8;'
     );
@@ -743,7 +716,7 @@ export default function JournalView({
 
   const getIsTradeCompleted = (t: Trade) => {
     if (t.journalingStatus) return t.journalingStatus === 'COMPLETE';
-    return Boolean(t.checklistScore !== undefined && t.checklistScore > 0);
+    return Boolean(getTradeGrade(t));
   };
 
   const completedCount = trades.filter(getIsTradeCompleted).length;
@@ -869,15 +842,6 @@ export default function JournalView({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowRulesModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-purple-200 hover:bg-purple-50 text-purple-700 text-xs font-bold rounded-lg transition shadow-xs cursor-pointer"
-            title="Add, edit, or delete trade journaling checklist rules"
-          >
-            <Sliders size={14} />
-            Manage Rules ({journalRules.length})
-          </button>
-
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition shadow-xs cursor-pointer"
@@ -1342,7 +1306,7 @@ export default function JournalView({
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-emerald-900">Playbook rule check</p>
-                  <p className="mt-0.5 text-3xs text-emerald-700">Mark what was true for this execution. This score is tracked separately from the journal checklist and remains tied to this trade&apos;s rule snapshot.</p>
+                  <p className="mt-0.5 text-3xs text-emerald-700">Mark what was true for this execution. This playbook checklist remains tied to this trade&apos;s rule snapshot.</p>
                 </div>
                 <div className="flex items-center gap-2 text-3xs font-bold">
                   <span className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1 text-emerald-800">
@@ -1558,56 +1522,7 @@ export default function JournalView({
             </div>
           </div>
 
-          {/* Trade Journaling Checklist Rules */}
-          <div className="p-4 bg-purple-50/50 rounded-xl border border-purple-150 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <CheckSquare size={16} className="text-purple-600" />
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  Trade Journaling Confluence Checklist
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-2xs font-bold text-purple-700 bg-purple-100/70 px-2.5 py-1 rounded-lg">
-                <span>Score: {journalRules.filter(r => formChecklist[r.id]).length} / {journalRules.length}</span>
-                <span>({journalRules.length > 0 ? Math.round((journalRules.filter(r => formChecklist[r.id]).length / journalRules.length) * 100) : 0}%)</span>
-              </div>
-            </div>
-
-            <p className="text-3xs text-slate-500 font-sans">
-              Evaluate rules met for this trade. Saving with checklist scores will set status to <strong className="text-emerald-600 font-bold">Journaling Complete</strong>.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
-              {journalRules.map(rule => {
-                const isChecked = Boolean(formChecklist[rule.id]);
-                return (
-                  <label
-                    key={rule.id}
-                    className={`flex items-start gap-2 p-2.5 rounded-xl border transition cursor-pointer text-xs ${
-                      isChecked
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => handleToggleFormRule(rule.id)}
-                      className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
-                    />
-                    <div className="space-y-0.5">
-                      <div className="font-bold leading-tight">{rule.label}</div>
-                      {rule.description && (
-                        <div className={`text-4xs leading-normal ${isChecked ? 'text-purple-100' : 'text-slate-450'}`}>
-                          {rule.description}
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
+          <TradeGradeSlider value={tradeGrade} onChange={setTradeGrade} />
 
           {/* Reflections notes */}
           <div>
@@ -2008,9 +1923,9 @@ export default function JournalView({
                                   <CheckCircle2 size={11} />
                                   Journaling Complete
                                 </button>
-                                {trade.checklistScore !== undefined && trade.maxChecklistScore !== undefined && (
+                                {getTradeGrade(trade) && (
                                   <span className="text-3xs font-bold font-mono px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/80">
-                                    {trade.checklistScore}/{trade.maxChecklistScore} ({trade.maxChecklistScore > 0 ? Math.round((trade.checklistScore / trade.maxChecklistScore) * 100) : 0}%)
+                                    Grade {getTradeGrade(trade)}
                                   </span>
                                 )}
                               </div>
@@ -2032,7 +1947,7 @@ export default function JournalView({
                                   Pending
                                 </button>
                               </div>
-                              <div className="text-4xs text-slate-400 font-medium">Checklist not evaluated yet</div>
+                              <div className="text-4xs text-slate-400 font-medium">Trade grade not selected yet</div>
                             </div>
                           )}
                         </td>
@@ -2042,7 +1957,7 @@ export default function JournalView({
                             <button
                               onClick={() => handleStartEdit(trade)}
                               className="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/80 text-3xs font-bold rounded transition cursor-pointer flex items-center gap-1.5 shadow-3xs"
-                              title="Journal trade: Score rules & edit details"
+                              title="Journal trade: grade execution and edit details"
                             >
                               <BookOpen size={11} />
                               <span>Journal</span>
@@ -2100,34 +2015,27 @@ export default function JournalView({
                                 </p>
                               </div>
 
-                              {/* Checklist Breakdown */}
+                              {/* Trade grade */}
                               <div className="space-y-1.5">
                                 <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider block">
-                                  Journaling Checklist Confluence Breakdown
+                                  Execution Grade
                                 </span>
-                                {trade.journalingStatus === 'COMPLETE' ? (
-                                  <div className="bg-white border border-slate-150 rounded-xl p-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                    {journalRules.map(rule => {
-                                      const passed = trade.checklist && Boolean(trade.checklist[rule.id]);
-                                      return (
-                                        <div key={rule.id} className={`flex items-center gap-1.5 p-1.5 rounded-lg border text-2xs font-bold ${
-                                          passed ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200 line-through'
-                                        }`}>
-                                          {passed ? <CheckCircle2 size={12} className="text-emerald-600 shrink-0" /> : <X size={12} className="text-slate-350 shrink-0" />}
-                                          <span className="truncate">{rule.label}</span>
-                                        </div>
-                                      );
-                                    })}
+                                {getTradeGrade(trade) ? (
+                                  <div className="flex items-center justify-between gap-3 rounded-xl border border-purple-200/80 bg-purple-50/60 p-3">
+                                    <span className="text-xs font-medium text-slate-600">Manual quality rating for this execution</span>
+                                    <span className="rounded-lg border border-purple-200 bg-white px-3 py-1 text-base font-black text-purple-700">
+                                      {getTradeGrade(trade)}
+                                    </span>
                                   </div>
                                 ) : (
                                   <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-800 font-medium flex items-center justify-between flex-wrap gap-2">
-                                    <span>This trade has not been evaluated with the journaling checklist yet.</span>
+                                    <span>This trade has not been graded yet.</span>
                                     <button
                                       onClick={() => handleOpenJournalModal(trade)}
                                       className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1"
                                     >
-                                      <CheckSquare size={13} />
-                                      Score Checklist Now
+                                      <Award size={13} />
+                                      Grade Trade Now
                                     </button>
                                   </div>
                                 )}
@@ -2263,15 +2171,15 @@ export default function JournalView({
         )}
       </div>
 
-      {/* Quick Journaling / Scoring Modal */}
+      {/* Quick Journaling / Grading Modal */}
       {journalingTrade && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto animate-scaleUp">
             <div className="flex justify-between items-start pb-4 border-b border-slate-100">
               <div>
                 <div className="flex items-center gap-2 text-2xs font-bold text-purple-600 uppercase tracking-wider">
-                  <CheckSquare size={14} />
-                  Trade Journaling Checklist Evaluator
+                  <Award size={14} />
+                  Trade Journal Grading
                 </div>
                 <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
                   {journalingTrade.asset} ({journalingTrade.direction}) — {journalingTrade.date}
@@ -2288,60 +2196,7 @@ export default function JournalView({
               </button>
             </div>
 
-            {/* Live Score Readout */}
-            <div className="bg-purple-50 border border-purple-200/80 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <div className="text-2xs font-bold text-purple-700 uppercase tracking-wider">Confluence Score</div>
-                <div className="text-2xl font-black text-purple-900 font-mono">
-                  {journalRules.filter(r => journalingChecklist[r.id]).length} / {journalRules.length}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-extrabold text-purple-800">
-                  {journalRules.length > 0 ? Math.round((journalRules.filter(r => journalingChecklist[r.id]).length / journalRules.length) * 100) : 0}% Confluence
-                </div>
-                <span className="text-3xs text-purple-600 font-bold">
-                  {journalRules.filter(r => journalingChecklist[r.id]).length >= 6 ? '🌟 High Quality Setup' : '⚠️ Low Confluence Trade'}
-                </span>
-              </div>
-            </div>
-
-            {/* Checklist items */}
-            <div className="space-y-3">
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
-                Checklist Rules ({journalRules.length} items)
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {journalRules.map(rule => {
-                  const isChecked = Boolean(journalingChecklist[rule.id]);
-                  return (
-                    <label
-                      key={rule.id}
-                      className={`flex items-start gap-2.5 p-3 rounded-xl border transition cursor-pointer text-xs ${
-                        isChecked
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleJournalRule(rule.id)}
-                        className="mt-0.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer"
-                      />
-                      <div className="space-y-0.5">
-                        <div className="font-bold leading-tight">{rule.label}</div>
-                        {rule.description && (
-                          <div className={`text-4xs leading-normal ${isChecked ? 'text-purple-100' : 'text-slate-500'}`}>
-                            {rule.description}
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+            <TradeGradeSlider value={journalingGrade} onChange={setJournalingGrade} compact />
 
             {/* Mistakes reflections */}
             <div className="space-y-2">
@@ -2403,7 +2258,7 @@ export default function JournalView({
               </button>
               <button
                 type="button"
-                onClick={handleSaveJournalScore}
+                onClick={handleSaveJournalGrade}
                 className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
               >
                 <CheckCircle2 size={14} />

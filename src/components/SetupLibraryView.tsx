@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { Trade, TradePlan, SetupDefinition, getTradeNetPnl } from '../types';
+import { getTradeGrade } from '../utils/tradeGrade';
 
 interface SetupLibraryViewProps {
   setups: SetupDefinition[];
@@ -157,7 +158,7 @@ const hasMeaningfulMistake = (trade: Trade) =>
 
 const isJournalComplete = (trade: Trade) =>
   trade.journalingStatus === 'COMPLETE' ||
-  (typeof trade.checklistScore === 'number' && trade.checklistScore > 0) ||
+  Boolean(getTradeGrade(trade)) ||
   Boolean(trade.notes?.trim());
 
 const sampleLabel = (count: number) => {

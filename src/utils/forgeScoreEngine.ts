@@ -1,4 +1,5 @@
 import { Trade, PerformanceMetrics, getTradeNetPnl } from '../types';
+import { getTradeGradeQuality } from './tradeGrade';
 
 export interface ForgeScores {
   winRateScore: number;
@@ -160,15 +161,16 @@ export function calculateConsistencyScore(trades: Trade[]): number {
 
   // Group by date to analyze daily PnL
   const pnlByDate: Record<string, number> = {};
-  let totalChecklistRatio = 0;
-  let checklistCount = 0;
+  let totalGradeQuality = 0;
+  let gradedTradeCount = 0;
 
   trades.forEach((t) => {
     const net = getTradeNetPnl(t);
     pnlByDate[t.date] = (pnlByDate[t.date] || 0) + net;
-    if (t.journalingStatus === 'COMPLETE' && t.maxChecklistScore && t.maxChecklistScore > 0) {
-      totalChecklistRatio += (t.checklistScore || 0) / t.maxChecklistScore;
-      checklistCount++;
+    const gradeQuality = getTradeGradeQuality(t);
+    if (t.journalingStatus === 'COMPLETE' && gradeQuality !== undefined) {
+      totalGradeQuality += gradeQuality;
+      gradedTradeCount++;
     }
   });
 
@@ -181,8 +183,8 @@ export function calculateConsistencyScore(trades: Trade[]): number {
   const winDayPct = (winningDays / totalDays) * 100;
   const winDayScore = Math.min(100, Math.max(0, winDayPct * 1.25));
 
-  // 2) Equity curve stability / checklist discipline (25%)
-  const avgChecklistScore = checklistCount > 0 ? (totalChecklistRatio / checklistCount) * 100 : 70;
+  // 2) Equity curve stability / execution-grade discipline (25%)
+  const avgExecutionGradeScore = gradedTradeCount > 0 ? totalGradeQuality / gradedTradeCount : 70;
 
   // 3) Return volatility / Std Dev ratio (20%)
   const avgPnl = dailyPnls.reduce((a, b) => a + b, 0) / totalDays;
@@ -211,7 +213,7 @@ export function calculateConsistencyScore(trades: Trade[]): number {
   const streakScore = Math.max(0, 100 - maxLosingStreak * 18);
 
   const weightedConsistency =
-    winDayScore * 0.4 + avgChecklistScore * 0.25 + volScore * 0.2 + streakScore * 0.15;
+    winDayScore * 0.4 + avgExecutionGradeScore * 0.25 + volScore * 0.2 + streakScore * 0.15;
 
   return Math.min(100, Math.max(0, Math.round(weightedConsistency)));
 }

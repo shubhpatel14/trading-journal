@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Trade, TradePlan, PerformanceMetrics, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getTradeDisplayDateTime } from '../utils/tradeTime';
+import { getTradeGrade } from '../utils/tradeGrade';
 
 import ForgeScoreCard from './ForgeScoreCard';
 
@@ -409,7 +410,7 @@ export default function Dashboard({
                       </span>
                       {trade.journalingStatus === 'COMPLETE' ? (
                         <span className="clay-pill bg-purple-100 text-purple-700 text-3xs font-extrabold">
-                          Complete ({trade.checklistScore ?? 0}/{trade.maxChecklistScore ?? 8})
+                          Complete{getTradeGrade(trade) ? ` · Grade ${getTradeGrade(trade)}` : ''}
                         </span>
                       ) : (
                         <span className="clay-pill bg-amber-100 text-amber-700 text-3xs font-extrabold">
