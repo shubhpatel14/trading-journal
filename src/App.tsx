@@ -1159,13 +1159,15 @@ export default function App() {
   };
 
   const handleEditTrade = async (id: string, updatedFields: Partial<Trade>) => {
-    let updatedTrade: Trade | undefined;
+    const currentTrade = trades.find(trade => trade.id === id);
+    if (!currentTrade) return;
+
+    const updatedTrade = normalizeFirestoreTrade({ ...currentTrade, ...updatedFields });
+
     setTrades(prev => {
       const next = prev.map(t => {
         if (t.id === id) {
-          const merged = normalizeFirestoreTrade({ ...t, ...updatedFields });
-          updatedTrade = merged;
-          return merged;
+          return normalizeFirestoreTrade({ ...t, ...updatedFields });
         }
         return t;
       });
@@ -1177,11 +1179,9 @@ export default function App() {
       return next;
     });
 
-    if (updatedTrade) {
-      await saveIDB(STORES.TRADES, updatedTrade);
-    }
+    await saveIDB(STORES.TRADES, updatedTrade);
 
-    if (user && db && !isDemoUser && updatedTrade) {
+    if (user && db && !isDemoUser) {
       try {
         await setDoc(doc(db, 'users', user.uid, 'trades', id), cleanForFirestore(updatedTrade));
       } catch (e) {

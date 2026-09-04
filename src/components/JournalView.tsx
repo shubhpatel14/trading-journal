@@ -655,7 +655,11 @@ export default function JournalView({
     setLtfScreenshot(trade.ltfScreenshot || '');
     setTradeGrade(getTradeGrade(trade) || 'B');
     setSetupRuleChecks(trade.setupRuleChecks || {});
-    setFormJournalingStatus(trade.journalingStatus || (getTradeGrade(trade) ? 'COMPLETE' : 'PENDING'));
+    // The row action is explicitly a journaling action. Default the editor to
+    // complete so saving a filled-in journal does not leave an imported trade
+    // showing as Pending. The user can still deliberately choose Pending Draft
+    // in the form before saving.
+    setFormJournalingStatus('COMPLETE');
     setShowForm(true);
   };
 
