@@ -133,6 +133,7 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
   const [dateFilter, setDateFilter] = useState('');
   const [search, setSearch] = useState('');
   const [reviewFilter, setReviewFilter] = useState<'ALL' | 'PENDING' | 'REVIEWED'>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -151,6 +152,25 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
     });
   }, [sortedTrades, dateFilter, reviewFilter, search]);
 
+  // Keep the sidebar light by rendering five trading dates at a time, matching
+  // the Journal Logs pagination pattern. Selection/navigation still uses the
+  // complete filtered list so previous/next never skips a trade.
+  const DAYS_PER_PAGE = 5;
+  const uniqueDates = useMemo(
+    () => Array.from(new Set(visibleTrades.map((trade) => getTradeDisplayDateTime(trade).date))),
+    [visibleTrades],
+  );
+  const totalPages = Math.max(1, Math.ceil(uniqueDates.length / DAYS_PER_PAGE));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const paginatedTrades = useMemo(() => {
+    const pageDates = new Set(uniqueDates.slice((safePage - 1) * DAYS_PER_PAGE, safePage * DAYS_PER_PAGE));
+    return visibleTrades.filter((trade) => pageDates.has(getTradeDisplayDateTime(trade).date));
+  }, [uniqueDates, safePage, visibleTrades]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, dateFilter, reviewFilter]);
+
   const selectedTrade = sortedTrades.find((trade) => trade.id === selectedTradeId) ?? visibleTrades[0] ?? null;
 
   useEffect(() => {
@@ -159,9 +179,12 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
 
   useEffect(() => {
     if (visibleTrades.length > 0 && !visibleTrades.some((trade) => trade.id === selectedTradeId)) {
-      setSelectedTradeId(visibleTrades[0].id);
+      const firstTrade = visibleTrades[0];
+      setSelectedTradeId(firstTrade.id);
+      const dateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(firstTrade).date);
+      if (dateIndex >= 0) setCurrentPage(Math.floor(dateIndex / DAYS_PER_PAGE) + 1);
     }
-  }, [visibleTrades, selectedTradeId]);
+  }, [visibleTrades, selectedTradeId, uniqueDates]);
 
   const saveTrade = async (markReviewed?: boolean) => {
     if (!selectedTrade) return;
@@ -197,7 +220,16 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
     if (!selectedTrade || visibleTrades.length < 2) return;
     const index = visibleTrades.findIndex((trade) => trade.id === selectedTrade.id);
     const nextIndex = Math.min(Math.max(index + direction, 0), visibleTrades.length - 1);
-    setSelectedTradeId(visibleTrades[nextIndex].id);
+    const nextTrade = visibleTrades[nextIndex];
+    setSelectedTradeId(nextTrade.id);
+    const nextDateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(nextTrade).date);
+    setCurrentPage(Math.floor(nextDateIndex / DAYS_PER_PAGE) + 1);
+  };
+
+  const selectTrade = (trade: Trade) => {
+    setSelectedTradeId(trade.id);
+    const dateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(trade).date);
+    if (dateIndex >= 0) setCurrentPage(Math.floor(dateIndex / DAYS_PER_PAGE) + 1);
   };
 
   if (sortedTrades.length === 0) {
@@ -268,13 +300,13 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
           <div className="custom-scrollbar mt-4 max-h-[620px] space-y-2 overflow-y-auto pr-1">
             {visibleTrades.length === 0 ? (
               <div className="py-10 text-center text-xs font-bold text-clay-muted">No trades match these filters.</div>
-            ) : visibleTrades.map((trade) => {
+            ) : paginatedTrades.map((trade) => {
               const itemDisplay = getTradeDisplayDateTime(trade);
               const itemAccount = accounts.find((item) => item.id === trade.accountId);
               const itemNet = getTradeNetPnl(trade, itemAccount?.commissionPerLot ?? 7);
               const active = trade.id === selectedTrade?.id;
               return (
-                <button key={trade.id} type="button" onClick={() => setSelectedTradeId(trade.id)} className={`w-full rounded-2xl p-3 text-left transition cursor-pointer ${active ? 'bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-clayButton' : 'bg-white/65 text-clay-foreground hover:-translate-y-0.5 hover:bg-white'}`}>
+                <button key={trade.id} type="button" onClick={() => selectTrade(trade)} className={`w-full rounded-2xl p-3 text-left transition cursor-pointer ${active ? 'bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-clayButton' : 'bg-white/65 text-clay-foreground hover:-translate-y-0.5 hover:bg-white'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
@@ -294,6 +326,16 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
               );
             })}
           </div>
+          {visibleTrades.length > 0 && (
+            <div className="mt-4 flex items-center justify-between border-t border-white/60 pt-3">
+              <span className="text-[10px] font-bold text-clay-muted">5 dates per page · {uniqueDates.length} total</span>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={safePage === 1} className="rounded-xl p-1.5 text-clay-muted transition hover:bg-white hover:text-clay-accent disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed" aria-label="Previous review page"><ChevronLeft size={14} /></button>
+                <span className="min-w-[46px] text-center text-[10px] font-extrabold text-clay-foreground">{safePage} / {totalPages}</span>
+                <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={safePage === totalPages} className="rounded-xl p-1.5 text-clay-muted transition hover:bg-white hover:text-clay-accent disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed" aria-label="Next review page"><ChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
         </aside>
 
         {selectedTrade && display && (
