@@ -35,7 +35,8 @@ import {
   BarChart3,
   CheckCircle2,
   RefreshCw,
-  Target
+  Target,
+  CalendarDays
 } from 'lucide-react';
 import { Trade, TradingAccount, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getTradeDisplayDateTime } from '../utils/tradeTime';
@@ -70,6 +71,19 @@ interface MetricInfo {
   tips: string[];
   relatedMetrics?: string[];
 }
+
+interface CalculationDetail {
+  formula: string;
+  substitution: string;
+  result: string;
+  note?: string;
+}
+
+const getNetOutcome = (trade: Trade) => {
+  const netPnl = getTradeNetPnl(trade);
+  if (Math.abs(netPnl) < 0.005) return 'BREAKEVEN' as const;
+  return netPnl > 0 ? 'WIN' as const : 'LOSS' as const;
+};
 
 const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
   net_pnl: {
@@ -189,7 +203,7 @@ const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
     category: 'Mathematical Edge',
     whatIsIt: 'Expectancy measures the average dollar amount (or R-multiple) you can expect to win or lose on every trade executed over time.',
     whyItMatters: 'If your Expectancy is positive, your system will mathematically print money over a sufficient sample size of trades.',
-    formula: 'EV = (Win Rate % * Avg Win $) - (Loss Rate % * Avg Loss $)',
+    formula: 'EV = Net P&L / Trades = (Win Rate * Avg Win) - (Loss Rate * Avg Loss)',
     benchmarks: [
       { label: 'Negative Edge', range: '< $0.00', status: 'bad' },
       { label: 'Marginal Edge', range: '$0.01 - $50.00', status: 'average' },
@@ -361,9 +375,9 @@ const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
   sharpe_ratio: {
     title: 'Sharpe Ratio',
     category: 'Advanced Statistics',
-    whatIsIt: 'Measures risk-adjusted return by comparing excess net returns over the risk-free rate relative to total volatility (standard deviation).',
+    whatIsIt: 'Measures trade-level risk-adjusted return by comparing average net P&L with the sample standard deviation of trade P&L.',
     whyItMatters: 'Wall Street and hedge funds use Sharpe to evaluate whether high returns are worth the volatility risk.',
-    formula: '(Average Trade PnL - Risk Free Rate) / Standard Deviation of PnL',
+    formula: '(Average Trade PnL - 0 assumed risk-free return) / Sample Standard Deviation of PnL',
     benchmarks: [
       { label: 'Sub-Optimal Risk', range: '< 1.0', status: 'bad' },
       { label: 'Good Risk-Adjusted', range: '1.0 - 2.0', status: 'average' },
@@ -382,7 +396,7 @@ const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
     category: 'Advanced Statistics',
     whatIsIt: 'Similar to Sharpe, but only penalizes downside negative volatility (losing trades) instead of total volatility.',
     whyItMatters: 'Traders love positive upside volatility (big winning wicks). Sortino gives credit for upside wins while penalizing losses.',
-    formula: '(Average Trade PnL - Risk Free Rate) / Downside Standard Deviation',
+    formula: 'Average Trade PnL / sqrt(Sum of squared negative PnLs / Total Trades)',
     benchmarks: [
       { label: 'High Loss Volatility', range: '< 1.5', status: 'bad' },
       { label: 'Strong Risk Profile', range: '1.5 - 3.0', status: 'average' },
@@ -477,7 +491,7 @@ const METRIC_KNOWLEDGE_BASE: Record<string, MetricInfo> = {
     category: 'Risk Analytics',
     whatIsIt: 'The mathematical probability that your trading account will suffer a drawdown large enough to destroy your trading capital.',
     whyItMatters: 'Guarantees that your position sizing will not lead to account wipeout during an unexpected streak of losses.',
-    formula: '((1 - W) / (1 + W)) ^ Units_of_Capital',
+    formula: '((1 - Kelly Edge) / (1 + Kelly Edge)) ^ Risk Units',
     benchmarks: [
       { label: 'Virtual Bankruptcy Certainty', range: '> 10%', status: 'bad' },
       { label: 'Moderate Risk', range: '1% - 10%', status: 'average' },
@@ -674,7 +688,7 @@ const DEFAULT_METRIC_INFO: MetricInfo = {
   ]
 };
 
-export type TimePeriod = 'today' | '7d' | '30d' | '3m' | '1y' | 'all';
+export type TimePeriod = 'today' | '7d' | '30d' | '3m' | '1y' | 'all' | 'custom';
 
 // ============================================================================
 // MAIN COMPONENT: INSIGHTSVIEW
@@ -688,6 +702,8 @@ export default function InsightsView({
 }: InsightsViewProps) {
   // Time Period Filter State
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('30d');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [playbookFilter, setPlaybookFilter] = useState('ALL');
 
   // Modal state for Universal ℹ️ Info buttons
@@ -733,10 +749,30 @@ export default function InsightsView({
   // analysis. They remain visible in the Journal until they are closed.
   const closedTrades = useMemo(() => trades.filter(trade => trade.status !== 'OPEN'), [trades]);
 
+  const availableDateBounds = useMemo(() => {
+    const dates = closedTrades.map(trade => trade.date).filter(Boolean).sort();
+    return { min: dates[0] || '', max: dates[dates.length - 1] || '' };
+  }, [closedTrades]);
+
+  const selectCustomPeriod = () => {
+    setCustomStartDate(current => current || availableDateBounds.min);
+    setCustomEndDate(current => current || availableDateBounds.max);
+    setTimePeriod('custom');
+  };
+
   // Filter trades based on selected time period
   const filteredTrades = useMemo(() => {
     if (timePeriod === 'all') return closedTrades;
     if (closedTrades.length === 0) return [];
+
+    if (timePeriod === 'custom') {
+      return closedTrades.filter(trade => {
+        if (!trade.date) return false;
+        if (customStartDate && trade.date < customStartDate) return false;
+        if (customEndDate && trade.date > customEndDate) return false;
+        return true;
+      });
+    }
 
     const now = new Date();
     let refTime = now.getTime();
@@ -774,7 +810,7 @@ export default function InsightsView({
           return true;
       }
     });
-  }, [closedTrades, timePeriod]);
+  }, [closedTrades, timePeriod, customStartDate, customEndDate]);
 
   // Sort filtered trades chronologically
   const sortedTrades = useMemo(() => {
@@ -784,6 +820,16 @@ export default function InsightsView({
       return timeA - timeB;
     });
   }, [filteredTrades]);
+
+  const periodStartingCapital = useMemo(() => {
+    if (sortedTrades.length === 0 || timePeriod === 'all') return activeInitialCapital;
+    const firstSelectedTime = new Date(`${sortedTrades[0].date}T${sortedTrades[0].time || '00:00'}`).getTime();
+    const priorNetPnl = closedTrades.reduce((sum, trade) => {
+      const tradeTime = new Date(`${trade.date}T${trade.time || '00:00'}`).getTime();
+      return !isNaN(tradeTime) && tradeTime < firstSelectedTime ? sum + getTradeNetPnl(trade) : sum;
+    }, 0);
+    return activeInitialCapital + priorNetPnl;
+  }, [activeInitialCapital, closedTrades, sortedTrades, timePeriod]);
 
   // 1. EXECUTIVE SUMMARY & KPI CALCULATIONS
   const kpis = useMemo(() => {
@@ -796,12 +842,14 @@ export default function InsightsView({
         expectancy: 0,
         maxDrawdownPct: 0,
         maxDrawdownUSD: 0,
+        maxDrawdownPeak: periodStartingCapital,
+        maxDrawdownTrough: periodStartingCapital,
         recoveryFactor: 0,
         avgRiskReward: 0,
-        avgRMultiple: 0,
         winCount: 0,
         lossCount: 0,
         beCount: 0,
+        lossRate: 0,
         totalPnl: 0,
         netReturnPct: 0,
         bestSession: 'N/A',
@@ -816,7 +864,6 @@ export default function InsightsView({
     }
 
     let totalPnl = 0;
-    let totalFees = 0;
     let winCount = 0;
     let lossCount = 0;
     let beCount = 0;
@@ -824,9 +871,12 @@ export default function InsightsView({
     let grossLoss = 0;
     let tradesWithMistakes = 0;
 
-    let rollingBalance = activeInitialCapital;
+    let rollingBalance = periodStartingCapital;
     let peakBalance = rollingBalance;
     let maxDdUSD = 0;
+    let maxDrawdownPct = 0;
+    let maxDrawdownPeak = peakBalance;
+    let maxDrawdownTrough = rollingBalance;
 
     let totalRrSum = 0;
     let validRrCount = 0;
@@ -836,9 +886,7 @@ export default function InsightsView({
 
     sortedTrades.forEach(t => {
       const netPnl = getTradeNetPnl(t);
-      const fee = getTradeTotalFees(t);
       totalPnl += netPnl;
-      totalFees += fee;
       rollingBalance += netPnl;
 
       if (rollingBalance > peakBalance) {
@@ -847,12 +895,20 @@ export default function InsightsView({
       const dd = peakBalance - rollingBalance;
       if (dd > maxDdUSD) {
         maxDdUSD = dd;
+        maxDrawdownPeak = peakBalance;
+        maxDrawdownTrough = rollingBalance;
+      }
+      const drawdownPct = peakBalance > 0 ? (dd / peakBalance) * 100 : 0;
+      if (drawdownPct > maxDrawdownPct) {
+        maxDrawdownPct = drawdownPct;
+        maxDrawdownPeak = peakBalance;
+        maxDrawdownTrough = rollingBalance;
       }
 
-      const isBe = t.status === 'BREAKEVEN' || (netPnl > -10 && netPnl < 10);
-      if (isBe) {
+      const outcome = getNetOutcome(t);
+      if (outcome === 'BREAKEVEN') {
         beCount++;
-      } else if (netPnl > 0) {
+      } else if (outcome === 'WIN') {
         winCount++;
         grossProfit += netPnl;
       } else {
@@ -889,17 +945,16 @@ export default function InsightsView({
     });
 
     const winRate = (winCount / totalTrades) * 100;
+    const lossRate = (lossCount / totalTrades) * 100;
     const avgWin = winCount > 0 ? grossProfit / winCount : 0;
     const avgLoss = lossCount > 0 ? grossLoss / lossCount : 0;
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99.9 : 0;
-    const expectancy = (winRate / 100 * avgWin) - ((1 - (winRate / 100)) * avgLoss);
-    const maxDrawdownPct = peakBalance > 0 ? (maxDdUSD / peakBalance) * 100 : 0;
+    const expectancy = totalPnl / totalTrades;
     const recoveryFactor = maxDdUSD > 0 ? totalPnl / maxDdUSD : totalPnl > 0 ? 99.9 : 0;
     const avgRiskReward = validRrCount > 0 ? totalRrSum / validRrCount : 0;
     const disciplineScore = Math.max(0, ((totalTrades - tradesWithMistakes) / totalTrades) * 100);
-    const avgRMultiple = avgLoss > 0 ? (expectancy / avgLoss) : 0;
     const payoffRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? 99.9 : 0;
-    const netReturnPct = activeInitialCapital > 0 ? (totalPnl / activeInitialCapital) * 100 : 0;
+    const netReturnPct = periodStartingCapital > 0 ? (totalPnl / periodStartingCapital) * 100 : 0;
 
     // Best session
     let bestSession = 'N/A';
@@ -928,12 +983,14 @@ export default function InsightsView({
       expectancy,
       maxDrawdownPct,
       maxDrawdownUSD: maxDdUSD,
+      maxDrawdownPeak,
+      maxDrawdownTrough,
       recoveryFactor,
       avgRiskReward,
-      avgRMultiple,
       winCount,
       lossCount,
       beCount,
+      lossRate,
       totalPnl,
       netReturnPct,
       avgWin,
@@ -945,12 +1002,12 @@ export default function InsightsView({
       grossLoss,
       totalTrades
     };
-  }, [sortedTrades, activeInitialCapital]);
+  }, [sortedTrades, periodStartingCapital]);
 
   // 2. EQUITY CURVE & RUNNING DRAWDOWN DATA
   const equityAnalyticsData = useMemo(() => {
-    let currentEquity = activeInitialCapital;
-    let peakEquity = activeInitialCapital;
+    let currentEquity = periodStartingCapital;
+    let peakEquity = periodStartingCapital;
     let cumulativePnl = 0;
 
     const points = sortedTrades.map((t, idx) => {
@@ -992,7 +1049,7 @@ export default function InsightsView({
     });
 
     return rollingPoints;
-  }, [sortedTrades, activeInitialCapital]);
+  }, [sortedTrades, periodStartingCapital]);
 
   // 3. PNL BY DAY OF WEEK & HOURLY ANALYTICS
   const timeAnalytics = useMemo(() => {
@@ -1118,7 +1175,7 @@ export default function InsightsView({
       const avgWin = d.wins > 0 ? d.grossProfit / d.wins : 0;
       const avgLoss = (d.trades - d.wins) > 0 ? d.grossLoss / (d.trades - d.wins) : 0;
       const profitFactor = d.grossLoss > 0 ? d.grossProfit / d.grossLoss : d.grossProfit > 0 ? 99.9 : 0;
-      const expectancy = (winRate / 100 * avgWin) - ((1 - (winRate / 100)) * avgLoss);
+      const expectancy = d.pnl / d.trades;
       
       return {
         key: d.key,
@@ -1238,9 +1295,8 @@ export default function InsightsView({
     let streakType: 'WIN' | 'LOSS' | 'NONE' = 'NONE';
     let streakCount = 0;
     for (let index = sortedTrades.length - 1; index >= 0; index -= 1) {
-      const pnl = getTradeNetPnl(sortedTrades[index]);
-      if (sortedTrades[index].status === 'BREAKEVEN' || (pnl > -10 && pnl < 10)) break;
-      const result = pnl > 0 ? 'WIN' : 'LOSS';
+      const result = getNetOutcome(sortedTrades[index]);
+      if (result === 'BREAKEVEN') break;
       if (streakType === 'NONE') streakType = result;
       if (result !== streakType) break;
       streakCount += 1;
@@ -1289,6 +1345,7 @@ export default function InsightsView({
         calmar: 0,
         kellyFullPct: 0,
         kellyHalfPct: 0,
+        rawKelly: 0,
         recommendedRiskPct: 0,
         ulcerIndex: 0,
         payoffRatio: 0,
@@ -1297,7 +1354,9 @@ export default function InsightsView({
         maxConsecWins: 0,
         maxConsecLosses: 0,
         largestWin: 0,
-        largestLoss: 0
+        largestLoss: 0,
+        annualizedReturnPct: 0,
+        elapsedDays: 0
       };
     }
 
@@ -1305,7 +1364,9 @@ export default function InsightsView({
     const avgPnL = kpis.totalPnl / totalTrades;
     
     // Standard deviation of trade PnL
-    const variance = pnls.reduce((sum, p) => sum + Math.pow(p - avgPnL, 2), 0) / totalTrades;
+    const variance = totalTrades > 1
+      ? pnls.reduce((sum, p) => sum + Math.pow(p - avgPnL, 2), 0) / (totalTrades - 1)
+      : 0;
     const stdDevPnL = Math.sqrt(variance);
 
     // Downside deviation (measuring squared losses relative to total trades)
@@ -1316,22 +1377,30 @@ export default function InsightsView({
     // System Quality Number (SQN) by Van Tharp: (Mean PnL / StdDev PnL) * sqrt(Trades)
     const sqn = stdDevPnL > 0 ? (avgPnL / stdDevPnL) * Math.sqrt(totalTrades) : 0;
 
-    // Sharpe Ratio (Trade Level Annualized over sqrt(252 trading sessions))
-    const sharpe = stdDevPnL > 0 ? (avgPnL / stdDevPnL) * Math.sqrt(Math.min(totalTrades, 252)) : 0;
+    // Per-trade Sharpe ratio. A zero risk-free return is assumed because the
+    // observations are individual trades rather than equal calendar periods.
+    const sharpe = stdDevPnL > 0 ? avgPnL / stdDevPnL : 0;
 
     // Sortino Ratio (Downside volatility)
-    const sortino = downsideStdDev > 0 ? (avgPnL / downsideStdDev) * Math.sqrt(Math.min(totalTrades, 252)) : avgPnL > 0 ? 99.9 : 0;
+    const sortino = downsideStdDev > 0 ? avgPnL / downsideStdDev : avgPnL > 0 ? 99.9 : 0;
 
     // Calmar Ratio: Annualized Return % / Max Drawdown %
-    const netReturnPct = activeInitialCapital > 0 ? (kpis.totalPnl / activeInitialCapital) * 100 : 0;
-    const calmar = kpis.maxDrawdownPct > 0 ? netReturnPct / kpis.maxDrawdownPct : netReturnPct > 0 ? 99.9 : 0;
+    const firstTradeTime = new Date(`${sortedTrades[0].date}T${sortedTrades[0].time || '00:00'}`).getTime();
+    const lastTradeTime = new Date(`${sortedTrades[totalTrades - 1].date}T${sortedTrades[totalTrades - 1].time || '00:00'}`).getTime();
+    const elapsedDays = Math.max(1, (lastTradeTime - firstTradeTime) / 86400000);
+    const endingCapital = periodStartingCapital + kpis.totalPnl;
+    const annualizedReturnPct = periodStartingCapital > 0 && endingCapital > 0
+      ? (Math.pow(endingCapital / periodStartingCapital, 365 / elapsedDays) - 1) * 100
+      : -100;
+    const calmar = kpis.maxDrawdownPct > 0 ? annualizedReturnPct / kpis.maxDrawdownPct : annualizedReturnPct > 0 ? 99.9 : 0;
 
     // Payoff Ratio: Avg Win / Avg Loss
     const payoffRatio = kpis.avgLoss > 0 ? kpis.avgWin / kpis.avgLoss : kpis.avgWin > 0 ? 99.9 : 0;
 
     // Kelly Criterion % (Full Kelly & Half Kelly)
     // Formula: K = W - ((1 - W) / R)
-    const W = kpis.winRate / 100; // Win rate decimal (e.g. 0.515)
+    const decisiveTrades = kpis.winCount + kpis.lossCount;
+    const W = decisiveTrades > 0 ? kpis.winCount / decisiveTrades : 0;
     const L = 1 - W; // Loss rate decimal (e.g. 0.485)
     const R = payoffRatio > 0 ? payoffRatio : 1.0;
     
@@ -1388,6 +1457,7 @@ export default function InsightsView({
       calmar,
       kellyFullPct,
       kellyHalfPct,
+      rawKelly,
       recommendedRiskPct,
       ulcerIndex,
       payoffRatio,
@@ -1396,9 +1466,178 @@ export default function InsightsView({
       maxConsecWins: maxWins,
       maxConsecLosses: maxLosses,
       largestWin,
-      largestLoss
+      largestLoss,
+      annualizedReturnPct,
+      elapsedDays
     };
-  }, [sortedTrades, kpis, activeInitialCapital, equityAnalyticsData]);
+  }, [sortedTrades, kpis, periodStartingCapital, equityAnalyticsData]);
+
+  const tradesWithMistakes = sortedTrades.filter(trade => trade.mistakes?.some(mistake => mistake !== 'None')).length;
+  const decisiveTrades = kpis.winCount + kpis.lossCount;
+  const decisiveWinRate = decisiveTrades ? kpis.winCount / decisiveTrades : 0;
+  const latestEquityPoint = equityAnalyticsData[equityAnalyticsData.length - 1];
+  const bestHour = [...timeAnalytics.hourlyData].filter(item => item.trades > 0).sort((a, b) => b.pnl - a.pnl)[0];
+  const bestDay = [...timeAnalytics.daysData].filter(item => item.trades > 0).sort((a, b) => b.pnl - a.pnl)[0];
+  const bestAssetRow = assetAnalytics[0];
+  const bestSessionPnl = sortedTrades
+    .filter(trade => (trade.session || 'NEW YORK') === kpis.bestSession)
+    .reduce((sum, trade) => sum + getTradeNetPnl(trade), 0);
+  const rollingWindow = sortedTrades.slice(-10);
+  const rollingWindowTotal = rollingWindow.reduce((sum, trade) => sum + getTradeNetPnl(trade), 0);
+  const downsideSquaredSum = sortedTrades
+    .map(getTradeNetPnl)
+    .filter(value => value < 0)
+    .reduce((sum, value) => sum + value ** 2, 0);
+  const downsideDeviation = sortedTrades.length ? Math.sqrt(downsideSquaredSum / sortedTrades.length) : 0;
+  const fullKellyRaw = advancedStats.rawKelly;
+
+  const calculationDetails: Record<string, CalculationDetail> = {
+    net_pnl: {
+      formula: 'Net P&L = Sum of each closed trade’s (gross P&L − fees)',
+      substitution: `${kpis.totalTrades} closed trades: ${formatVal(kpis.grossProfit)} gross wins − ${formatVal(kpis.grossLoss)} gross losses`,
+      result: formatVal(kpis.totalPnl, { showSign: true }),
+      note: 'The trade-level net values are authoritative; recorded fees are already included by getTradeNetPnl.'
+    },
+    win_rate: {
+      formula: 'Win Rate = Winning trades ÷ Total closed trades × 100',
+      substitution: `${kpis.winCount} ÷ ${kpis.totalTrades} × 100`,
+      result: `${kpis.winRate.toFixed(2)}%`,
+      note: `${kpis.lossCount} losses and ${kpis.beCount} exact net break-even trades remain in the denominator.`
+    },
+    system_expectancy: {
+      formula: 'Expectancy = (Win Rate × Average Win) − (Loss Rate × Average Loss)',
+      substitution: `(${(kpis.winRate / 100).toFixed(4)} × ${formatVal(kpis.avgWin)}) − (${(kpis.lossRate / 100).toFixed(4)} × ${formatVal(kpis.avgLoss)})`,
+      result: `${formatVal(kpis.expectancy, { showSign: true })} per trade`,
+      note: `Win rate is ${kpis.winRate.toFixed(2)}% and loss rate is ${kpis.lossRate.toFixed(2)}%. Break-even probability contributes zero. This is equivalent to Net P&L ÷ ${kpis.totalTrades} closed trades.`
+    },
+    profit_factor: {
+      formula: 'Profit Factor = Gross winning P&L ÷ Absolute gross losing P&L',
+      substitution: `${formatVal(kpis.grossProfit)} ÷ ${formatVal(kpis.grossLoss)}`,
+      result: kpis.grossLoss === 0 && kpis.grossProfit > 0 ? '∞ (no losing P&L)' : kpis.profitFactor.toFixed(2)
+    },
+    avg_win_loss: {
+      formula: 'Average Win = Gross wins ÷ Wins; Average Loss = Gross losses ÷ Losses',
+      substitution: `${formatVal(kpis.grossProfit)} ÷ ${kpis.winCount} = ${formatVal(kpis.avgWin)}; ${formatVal(kpis.grossLoss)} ÷ ${kpis.lossCount} = ${formatVal(kpis.avgLoss)}`,
+      result: `Payoff ratio ${kpis.payoffRatio === 99.9 ? '∞' : kpis.payoffRatio.toFixed(2)}`
+    },
+    max_drawdown: {
+      formula: 'Drawdown % = (Peak equity − Trough equity) ÷ Peak equity × 100; maximum is taken across every trade',
+      substitution: `(${formatVal(kpis.maxDrawdownPeak)} − ${formatVal(kpis.maxDrawdownTrough)}) ÷ ${formatVal(kpis.maxDrawdownPeak)} × 100`,
+      result: `${kpis.maxDrawdownPct.toFixed(2)}% (${formatVal(kpis.maxDrawdownUSD)} maximum dollar decline)`
+    },
+    discipline_score: {
+      formula: 'Discipline Score = (Total trades − Trades with ≥1 tagged mistake) ÷ Total trades × 100',
+      substitution: `(${kpis.totalTrades} − ${tradesWithMistakes}) ÷ ${kpis.totalTrades} × 100`,
+      result: `${kpis.disciplineScore.toFixed(2)}%`
+    },
+    best_session: {
+      formula: 'Best Session = Session with the highest summed net P&L',
+      substitution: `max(Sum of net P&L grouped by session)`,
+      result: `${kpis.bestSession}: ${formatVal(bestSessionPnl, { showSign: true })}`
+    },
+    best_asset: {
+      formula: 'Best Asset = Asset with the highest summed net P&L',
+      substitution: `max(Sum of net P&L grouped across ${assetAnalytics.length} asset${assetAnalytics.length === 1 ? '' : 's'})`,
+      result: bestAssetRow ? `${bestAssetRow.asset}: ${formatVal(bestAssetRow.pnl, { showSign: true })} across ${bestAssetRow.trades} trades` : 'N/A'
+    },
+    execution_volume: {
+      formula: 'Execution Volume = Count of closed trades inside the active date filter',
+      substitution: `Count(${timePeriod === 'custom' ? `${customStartDate} through ${customEndDate}` : timePeriod})`,
+      result: `${kpis.totalTrades} trades`
+    },
+    equity_curve: {
+      formula: 'Equity after trade n = Initial capital + cumulative net P&L through trade n',
+      substitution: `${formatVal(periodStartingCapital)} period-start equity + ${formatVal(kpis.totalPnl, { showSign: true })}`,
+      result: formatVal(latestEquityPoint?.equity || periodStartingCapital),
+      note: 'Period-start equity equals account initial capital plus net P&L from closed trades before the active filter.'
+    },
+    rolling_expectancy: {
+      formula: 'Rolling Expectancy = Sum of net P&L in latest window ÷ Trades in that window',
+      substitution: `${formatVal(rollingWindowTotal, { showSign: true })} ÷ ${rollingWindow.length}`,
+      result: `${formatVal(rollingWindow.length ? rollingWindowTotal / rollingWindow.length : 0, { showSign: true })} per trade (latest ${rollingWindow.length})`
+    },
+    rolling_drawdown: {
+      formula: 'Current Drawdown % = (Running peak equity − Current equity) ÷ Running peak equity × 100',
+      substitution: latestEquityPoint ? `(${formatVal(latestEquityPoint.peak)} − ${formatVal(latestEquityPoint.equity)}) ÷ ${formatVal(latestEquityPoint.peak)} × 100` : 'No closed trades',
+      result: `${Math.abs(latestEquityPoint?.drawdownPct || 0).toFixed(2)}% current; ${kpis.maxDrawdownPct.toFixed(2)}% maximum`
+    },
+    pnl_distribution: {
+      formula: 'Bucket count = Number of net trade P&Ls inside each displayed interval',
+      substitution: distributionData.histogram.map(bucket => `${bucket.range}: ${bucket.count}`).join(' · '),
+      result: `${kpis.totalTrades} trades classified`
+    },
+    win_loss_pie: {
+      formula: 'Outcome share = Outcome count ÷ Total closed trades × 100',
+      substitution: `${kpis.winCount} wins · ${kpis.lossCount} losses · ${kpis.beCount} break-even ÷ ${kpis.totalTrades}`,
+      result: `${kpis.winRate.toFixed(2)}% wins · ${kpis.lossRate.toFixed(2)}% losses · ${(kpis.beCount / kpis.totalTrades * 100).toFixed(2)}% break-even`
+    },
+    hourly_profitability: {
+      formula: 'Hourly P&L = Sum of net P&L grouped by the displayed trade hour',
+      substitution: 'MT5 broker timestamps are converted to IST before grouping; other trades use their stored time.',
+      result: bestHour ? `Best hour ${bestHour.hour}: ${formatVal(bestHour.pnl, { showSign: true })} across ${bestHour.trades} trades` : 'N/A'
+    },
+    day_heatmap: {
+      formula: 'Daily P&L = Sum of net P&L grouped by displayed weekday',
+      substitution: 'Each closed trade is assigned to the weekday of its displayed date.',
+      result: bestDay ? `Best day ${bestDay.day}: ${formatVal(bestDay.pnl, { showSign: true })} across ${bestDay.trades} trades` : 'N/A'
+    },
+    mistake_frequency: {
+      formula: 'Mistake frequency = Tagged occurrences; associated P&L = Sum of net P&L on trades carrying that tag',
+      substitution: behavioralAnalytics.length ? behavioralAnalytics.map(item => `${item.mistake}: ${item.count}, ${formatVal(item.totalLoss, { showSign: true })}`).join(' · ') : 'No mistakes tagged',
+      result: `${tradesWithMistakes} of ${kpis.totalTrades} trades have at least one mistake`,
+      note: 'Associated P&L is correlation, not proven causal cost. A trade with multiple tags contributes to every applicable tag.'
+    },
+    setup_performance: {
+      formula: 'Setup expectancy = Setup net P&L ÷ Setup trade count',
+      substitution: visiblePlaybookAnalytics.length ? visiblePlaybookAnalytics.map(item => `${item.setup}: ${formatVal(item.pnl, { showSign: true })} ÷ ${item.trades}`).join(' · ') : 'No setup data',
+      result: visiblePlaybookAnalytics.length ? visiblePlaybookAnalytics.map(item => `${item.setup}: ${formatVal(item.expectancy, { showSign: true })}/trade`).join(' · ') : 'N/A'
+    },
+    sqn: {
+      formula: 'SQN = (Mean net P&L ÷ Sample standard deviation) × √N',
+      substitution: `(${formatVal(kpis.expectancy, { showSign: true })} ÷ ${formatVal(advancedStats.stdDevPnL)}) × √${kpis.totalTrades}`,
+      result: advancedStats.sqn.toFixed(3),
+      note: 'Sample standard deviation uses N−1. At least two trades are needed for non-zero dispersion.'
+    },
+    sharpe_ratio: {
+      formula: 'Per-trade Sharpe = (Mean net P&L − 0 risk-free return) ÷ Sample standard deviation',
+      substitution: `${formatVal(kpis.expectancy, { showSign: true })} ÷ ${formatVal(advancedStats.stdDevPnL)}`,
+      result: advancedStats.sharpe.toFixed(3),
+      note: 'This is intentionally not annualized because trades are irregular observations, not equal daily returns.'
+    },
+    sortino_ratio: {
+      formula: 'Per-trade Sortino = Mean net P&L ÷ √(Sum of squared negative P&Ls ÷ N)',
+      substitution: `${formatVal(kpis.expectancy, { showSign: true })} ÷ ${formatVal(downsideDeviation)}`,
+      result: advancedStats.sortino === 99.9 ? '∞ (no downside observations)' : advancedStats.sortino.toFixed(3)
+    },
+    kelly_criterion: {
+      formula: 'Full Kelly = p − (q ÷ payoff ratio); Half Kelly = Full Kelly ÷ 2',
+      substitution: `${decisiveWinRate.toFixed(4)} − (${(1 - decisiveWinRate).toFixed(4)} ÷ ${kpis.payoffRatio.toFixed(4)})`,
+      result: `${advancedStats.kellyFullPct.toFixed(2)}% full · ${advancedStats.kellyHalfPct.toFixed(2)}% half`,
+      note: `p uses ${decisiveTrades} decisive trades; ${kpis.beCount} exact break-even trades are excluded. Displayed Kelly is clamped to 0–100%.`
+    },
+    payoff_ratio: {
+      formula: 'Payoff Ratio = Average winning net P&L ÷ Average losing net P&L',
+      substitution: `${formatVal(kpis.avgWin)} ÷ ${formatVal(kpis.avgLoss)}`,
+      result: kpis.payoffRatio === 99.9 ? '∞ (no losses)' : kpis.payoffRatio.toFixed(3)
+    },
+    risk_of_ruin: {
+      formula: 'Approx. ruin risk = ((1 − Kelly edge) ÷ (1 + Kelly edge))^20 × 100',
+      substitution: fullKellyRaw <= 0 ? `Kelly edge ${fullKellyRaw.toFixed(4)} ≤ 0` : `((${(1 - fullKellyRaw).toFixed(4)} ÷ ${(1 + fullKellyRaw).toFixed(4)}) ^ 20) × 100`,
+      result: `${advancedStats.riskOfRuin.toFixed(3)}%`,
+      note: fullKellyRaw <= 0 ? 'A non-positive estimated edge is conservatively shown as 99.9% risk.' : 'This is a simplified 20-risk-unit model, not a guarantee. It assumes independent trades and stable win/payoff rates.'
+    },
+    ulcer_index: {
+      formula: 'Ulcer Index = √(Sum of squared drawdown percentages ÷ N)',
+      substitution: `√(Σ drawdown%² ÷ ${kpis.totalTrades})`,
+      result: advancedStats.ulcerIndex.toFixed(3)
+    },
+    calmar_ratio: {
+      formula: 'Calmar = Annualized compounded return % ÷ Maximum drawdown %',
+      substitution: `${advancedStats.annualizedReturnPct.toFixed(2)}% ÷ ${kpis.maxDrawdownPct.toFixed(2)}%`,
+      result: advancedStats.calmar === 99.9 ? '∞ (no drawdown)' : advancedStats.calmar.toFixed(3),
+      note: `Annualization spans ${advancedStats.elapsedDays.toFixed(1)} days between the first and last selected trades and can be unstable for short samples.`
+    }
+  };
 
   // 9. AI PERFORMANCE INSIGHTS
   const aiInsights = useMemo(() => {
@@ -1481,18 +1720,6 @@ export default function InsightsView({
     return list;
   }, [sortedTrades, kpis, behavioralAnalytics, executionQualityAnalytics, formatVal]);
 
-  const sampleAssessment = kpis.totalTrades >= 30
-    ? { label: 'Decision-ready', tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', note: '30+ closed trades gives patterns useful weight.' }
-    : kpis.totalTrades >= 10
-      ? { label: 'Developing sample', tone: 'text-blue-700 bg-blue-50 border-blue-200', note: 'Useful directional evidence; keep logging before changing a process.' }
-      : { label: 'Exploratory sample', tone: 'text-amber-800 bg-amber-50 border-amber-200', note: 'Treat patterns as hypotheses, not sizing signals.' };
-  const strongestSetup = setupAnalytics[0];
-  const weakestSetup = [...setupAnalytics].sort((a, b) => a.pnl - b.pnl)[0];
-  const topMistake = behavioralAnalytics[0];
-  const riskState = kpis.maxDrawdownPct >= 5 || advancedStats.maxConsecLosses >= 3
-    ? { label: 'Defensive posture', detail: 'Avoid increasing size while the drawdown or losing streak is active.', tone: 'text-rose-700 bg-rose-50 border-rose-200' }
-    : { label: 'Risk contained', detail: 'Keep risk fixed and let the next sample validate the process.', tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-
   // Server-side AI Coach Audit Trigger
   const generateAiAudit = async () => {
     if (sortedTrades.length === 0) {
@@ -1526,6 +1753,7 @@ export default function InsightsView({
   };
 
   const activeInfoModalData = activeInfoKey ? (METRIC_KNOWLEDGE_BASE[activeInfoKey] || DEFAULT_METRIC_INFO) : null;
+  const activeCalculationDetail = activeInfoKey ? calculationDetails[activeInfoKey] : null;
 
   const handleExportCSV = () => {
     const headers = 'Metric,Value\n';
@@ -1649,25 +1877,56 @@ export default function InsightsView({
               { id: '30d', label: '30 Days' },
               { id: '3m', label: '3 Months' },
               { id: '1y', label: '1 Year' },
-              { id: 'all', label: 'All Time' }
+              { id: 'all', label: 'All Time' },
+              { id: 'custom', label: 'Custom' }
             ].map((period) => {
               const isActive = timePeriod === period.id;
               return (
                 <button
                   key={period.id}
                   id={`timeframe-btn-${period.id}`}
-                  onClick={() => setTimePeriod(period.id as TimePeriod)}
-                  className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  onClick={() => period.id === 'custom' ? selectCustomPeriod() : setTimePeriod(period.id as TimePeriod)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                     isActive
                       ? 'bg-blue-600 text-white shadow-md active:scale-95'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200/60'
                   }`}
                 >
+                  {period.id === 'custom' && <CalendarDays size={13} />}
                   {period.label}
                 </button>
               );
             })}
           </div>
+          {timePeriod === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2 border-l border-slate-200 pl-3">
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-3xs font-bold text-slate-500">
+                <span className="uppercase tracking-wider">From</span>
+                <input
+                  type="date"
+                  aria-label="Custom range start date"
+                  value={customStartDate}
+                  min={availableDateBounds.min}
+                  max={customEndDate || availableDateBounds.max}
+                  onChange={(event) => setCustomStartDate(event.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none [color-scheme:light]"
+                />
+              </label>
+              <span className="text-slate-300">—</span>
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-3xs font-bold text-slate-500">
+                <span className="uppercase tracking-wider">To</span>
+                <input
+                  type="date"
+                  aria-label="Custom range end date"
+                  value={customEndDate}
+                  min={customStartDate || availableDateBounds.min}
+                  max={availableDateBounds.max}
+                  onChange={(event) => setCustomEndDate(event.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none [color-scheme:light]"
+                />
+              </label>
+            </div>
+          )}
         </div>
         <div className="text-3xs text-slate-400 font-mono flex items-center gap-1.5">
           <Clock size={12} className="text-slate-400" />
@@ -1683,7 +1942,7 @@ export default function InsightsView({
           <div className="space-y-1.5">
             <h3 className="text-base font-bold text-slate-850">No trades recorded in this timeframe</h3>
             <p className="text-xs text-slate-500 font-sans leading-relaxed">
-              No executed trades match the selected timeframe (<strong className="text-blue-600 font-mono">{timePeriod.toUpperCase()}</strong>). Try selecting another time period such as <strong className="text-blue-600">30 Days</strong> or <strong className="text-blue-600">All Time</strong>.
+              No executed trades match the selected timeframe (<strong className="text-blue-600 font-mono">{timePeriod === 'custom' ? `${customStartDate || 'start'} to ${customEndDate || 'end'}` : timePeriod.toUpperCase()}</strong>). Try selecting another time period such as <strong className="text-blue-600">30 Days</strong> or <strong className="text-blue-600">All Time</strong>.
             </p>
           </div>
           <button
@@ -1695,65 +1954,6 @@ export default function InsightsView({
         </div>
       ) : (
         <>
-          <section className="clay-surface relative overflow-hidden p-5 sm:p-7">
-            <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-300/25 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-sky-300/20 blur-3xl" />
-            <div className="relative space-y-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex max-w-3xl items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-400 to-violet-700 text-white shadow-clayButton">
-                    <Target size={19} className="stroke-[2.5px]" />
-                  </div>
-                  <div>
-                    <div className="text-3xs font-black uppercase tracking-[0.18em] text-violet-700">Tactical brief</div>
-                    <h2 className="mt-1 font-display text-xl font-black tracking-tight text-slate-900 sm:text-2xl">What the current trade sample is telling you</h2>
-                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500">Use this as a review prompt—not a signal to increase size. All figures below are net of recorded fees and exclude open trades.</p>
-                  </div>
-                </div>
-                <span className={`w-fit shrink-0 rounded-full border px-3 py-1.5 text-3xs font-black uppercase tracking-wider shadow-sm ${sampleAssessment.tone}`}>
-                  {sampleAssessment.label}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <article className="relative overflow-hidden rounded-[24px] border border-violet-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(124,58,237,0.08)] backdrop-blur-sm">
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-400 to-violet-600" />
-                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><Database size={13} className="text-violet-500" /> Evidence quality</div>
-                  <div className="mt-2 font-display text-lg font-black text-slate-900">{kpis.totalTrades} closed trades</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">{sampleAssessment.note}</p>
-                </article>
-                <article className="relative overflow-hidden rounded-[24px] border border-emerald-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(16,185,129,0.07)] backdrop-blur-sm">
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 to-emerald-500" />
-                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><Target size={13} className="text-emerald-500" /> Focus for review</div>
-                  <div className="mt-2 text-sm font-black text-emerald-700">{strongestSetup?.setup || 'No setup data yet'}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">
-                    {strongestSetup ? `${strongestSetup.trades} trades · ${formatVal(strongestSetup.pnl, { showSign: true })} net. Compare it with lower-performing setups before changing rules.` : 'Log setup names consistently to compare them.'}
-                  </p>
-                </article>
-                <article className="relative overflow-hidden rounded-[24px] border border-rose-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(244,63,94,0.07)] backdrop-blur-sm">
-                  <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${riskState.label === 'Risk contained' ? 'from-emerald-300 to-emerald-500' : 'from-rose-300 to-rose-500'}`} />
-                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><ShieldAlert size={13} className={riskState.label === 'Risk contained' ? 'text-emerald-500' : 'text-rose-500'} /> Risk posture</div>
-                  <div className={`mt-2 text-sm font-black ${riskState.label === 'Risk contained' ? 'text-emerald-700' : 'text-rose-700'}`}>{riskState.label}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">{riskState.detail} Max drawdown: {kpis.maxDrawdownPct.toFixed(2)}%.</p>
-                </article>
-                <article className="relative overflow-hidden rounded-[24px] border border-amber-100 bg-white/75 p-4 shadow-[0_10px_28px_rgba(245,158,11,0.07)] backdrop-blur-sm">
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-300 to-amber-500" />
-                  <div className="flex items-center gap-2 text-3xs font-black uppercase tracking-wider text-slate-400"><CheckCircle2 size={13} className="text-amber-500" /> Process check</div>
-                  <div className="mt-2 text-sm font-black text-amber-700">{topMistake ? topMistake.mistake : 'No mistakes tagged'}</div>
-                  <p className="mt-1 text-3xs leading-relaxed text-slate-500">
-                    {topMistake ? `${topMistake.count} tagged trades · ${formatVal(topMistake.totalLoss, { showSign: true })} net associated result. Review the chart and notes before drawing a causal conclusion.` : 'Keep tagging execution mistakes to make this signal useful.'}
-                  </p>
-                </article>
-              </div>
-
-              {weakestSetup && strongestSetup && weakestSetup.setup !== strongestSetup.setup && (
-                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-3xs leading-relaxed text-amber-900">
-                  <strong className="font-black">Review contrast:</strong> <strong>{strongestSetup.setup}</strong> is currently {formatVal(strongestSetup.pnl, { showSign: true })} net, while <strong>{weakestSetup.setup}</strong> is {formatVal(weakestSetup.pnl, { showSign: true })} net. Check the sample count, time of day, and checklist quality before deciding whether to pause a setup.
-                </div>
-              )}
-            </div>
-          </section>
-
           {/* SECTION 1: EXECUTIVE SUMMARY KPI CARDS */}
           <section className="space-y-3">
             <div className="flex justify-between items-center">
@@ -2711,7 +2911,7 @@ export default function InsightsView({
 
                 {/* Sharpe Ratio */}
                 <tr className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sharpe Ratio (Annualized)</td>
+                  <td className="py-3 px-4 font-bold font-sans text-slate-900">Sharpe Ratio (Per Trade)</td>
                   <td className="py-3 px-4 font-bold text-slate-850">{advancedStats.sharpe.toFixed(2)}</td>
                   <td className="py-3 px-4 text-slate-500">1.0+ (Good) / 2.0+ (Hedge Fund Standard)</td>
                   <td className="py-3 px-4">
@@ -2938,11 +3138,27 @@ export default function InsightsView({
                 <p className="text-slate-650">{activeInfoModalData.whyItMatters}</p>
               </div>
 
-              {/* Formula if applicable */}
-              {activeInfoModalData.formula && (
-                <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl space-y-1">
-                  <h4 className="text-3xs font-extrabold uppercase text-slate-400 tracking-wider font-mono">Formula</h4>
-                  <div className="font-mono text-xs font-bold text-blue-700">{activeInfoModalData.formula}</div>
+              {/* Exact calculation for the active filter */}
+              {(activeCalculationDetail || activeInfoModalData.formula) && (
+                <div className="p-4 bg-blue-50/60 border border-blue-100 rounded-2xl space-y-3">
+                  <h4 className="text-3xs font-extrabold uppercase text-blue-700 tracking-wider font-mono">Exact calculation · current filter</h4>
+                  <div className="space-y-2 font-mono">
+                    <div className="text-xs font-bold text-slate-800">{activeCalculationDetail?.formula || activeInfoModalData.formula}</div>
+                    {activeCalculationDetail && (
+                      <>
+                        <div className="rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-3xs leading-relaxed text-slate-600 break-words">
+                          {activeCalculationDetail.substitution}
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-blue-100 pt-2">
+                          <span className="text-3xs font-bold uppercase tracking-wider text-slate-400">Result</span>
+                          <strong className="text-sm text-blue-700">{activeCalculationDetail.result}</strong>
+                        </div>
+                        {activeCalculationDetail.note && (
+                          <p className="font-sans text-3xs leading-relaxed text-slate-500">{activeCalculationDetail.note}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
