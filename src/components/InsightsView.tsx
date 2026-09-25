@@ -1261,7 +1261,13 @@ export default function InsightsView({
 
     const journaledTrades = sortedTrades.filter(trade => trade.journalingStatus === 'COMPLETE' || Boolean(getTradeGrade(trade)));
     const notesTrades = sortedTrades.filter(trade => Boolean(trade.notes?.trim()));
-    const screenshotTrades = sortedTrades.filter(trade => Boolean(trade.htfScreenshot || trade.ltfScreenshot));
+    const screenshotTrades = sortedTrades.filter(trade => Boolean(
+      trade.htfScreenshot ||
+      trade.ltfScreenshot ||
+      trade.fourHourScreenshot ||
+      trade.oneHourScreenshot ||
+      trade.fifteenMinuteScreenshot
+    ));
     const ruleTrackedTrades = sortedTrades.filter(trade => {
       const storedMax = trade.setupRuleMaxScore || 0;
       const snapshotMax = trade.setupRuleSnapshot?.length || 0;

@@ -105,6 +105,9 @@ export interface Trade {
   notes: string;
   htfScreenshot?: string; // High Timeframe Screenshot
   ltfScreenshot?: string; // Low Timeframe Screenshot
+  fourHourScreenshot?: string; // 4-hour chart screenshot
+  oneHourScreenshot?: string; // 1-hour chart screenshot
+  fifteenMinuteScreenshot?: string; // 15-minute chart screenshot
   tradeGrade?: TradeGrade; // Manual execution grade selected in the journal
   /** @deprecated Legacy generic checklist data retained for backup compatibility. */
   checklist?: Record<string, boolean>;

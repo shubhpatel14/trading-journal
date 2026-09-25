@@ -370,6 +370,9 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
             <div className="grid gap-5 xl:grid-cols-2">
               <ScreenshotPanel image={selectedTrade.htfScreenshot} label="High timeframe chart" onOpen={setLightbox} />
               <ScreenshotPanel image={selectedTrade.ltfScreenshot} label="Entry timeframe chart" onOpen={setLightbox} />
+              <ScreenshotPanel image={selectedTrade.fourHourScreenshot} label="4 hour chart" onOpen={setLightbox} />
+              <ScreenshotPanel image={selectedTrade.oneHourScreenshot} label="1 hour chart" onOpen={setLightbox} />
+              <ScreenshotPanel image={selectedTrade.fifteenMinuteScreenshot} label="15 minute chart" onOpen={setLightbox} />
             </div>
 
             <div className="clay-surface p-5 sm:p-6">

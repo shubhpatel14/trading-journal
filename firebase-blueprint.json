@@ -37,7 +37,10 @@
             "mistakes": { "type": "array", "items": { "type": "string" } },
             "notes": { "type": "string" },
             "htfScreenshot": { "type": "string" },
-            "ltfScreenshot": { "type": "string" }
+            "ltfScreenshot": { "type": "string" },
+            "fourHourScreenshot": { "type": "string" },
+            "oneHourScreenshot": { "type": "string" },
+            "fifteenMinuteScreenshot": { "type": "string" }
           }
         },
         "plans": {

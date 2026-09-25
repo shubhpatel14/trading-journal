@@ -470,6 +470,9 @@ export default function JournalView({
   // High / Low Timeframe Screenshots URLs
   const [htfScreenshot, setHtfScreenshot] = useState('');
   const [ltfScreenshot, setLtfScreenshot] = useState('');
+  const [fourHourScreenshot, setFourHourScreenshot] = useState('');
+  const [oneHourScreenshot, setOneHourScreenshot] = useState('');
+  const [fifteenMinuteScreenshot, setFifteenMinuteScreenshot] = useState('');
 
   // Filtering / Search State
   const [tradeTypeTab, setTradeTypeTab] = useState<'ALL' | 'COMPLETED' | 'PENDING'>('ALL');
@@ -539,6 +542,9 @@ export default function JournalView({
       setTime(new Date().toTimeString().slice(0, 5));
       setHtfScreenshot('');
       setLtfScreenshot('');
+      setFourHourScreenshot('');
+      setOneHourScreenshot('');
+      setFifteenMinuteScreenshot('');
       setShowForm(true);
       setEditingId(null);
     }
@@ -608,6 +614,9 @@ export default function JournalView({
     setNotes('');
     setHtfScreenshot('');
     setLtfScreenshot('');
+    setFourHourScreenshot('');
+    setOneHourScreenshot('');
+    setFifteenMinuteScreenshot('');
     setSelectedMistakes(['None']);
     setTradeGrade('B');
     setSetupRuleChecks({});
@@ -653,6 +662,9 @@ export default function JournalView({
     setNotes(trade.notes);
     setHtfScreenshot(trade.htfScreenshot || '');
     setLtfScreenshot(trade.ltfScreenshot || '');
+    setFourHourScreenshot(trade.fourHourScreenshot || '');
+    setOneHourScreenshot(trade.oneHourScreenshot || '');
+    setFifteenMinuteScreenshot(trade.fifteenMinuteScreenshot || '');
     setTradeGrade(getTradeGrade(trade) || 'B');
     setSetupRuleChecks(trade.setupRuleChecks || {});
     // The row action is explicitly a journaling action. Default the editor to
@@ -818,6 +830,9 @@ export default function JournalView({
       notes,
       htfScreenshot: htfScreenshot.trim(),
       ltfScreenshot: ltfScreenshot.trim(),
+      fourHourScreenshot: fourHourScreenshot.trim(),
+      oneHourScreenshot: oneHourScreenshot.trim(),
+      fifteenMinuteScreenshot: fifteenMinuteScreenshot.trim(),
       tradeGrade,
       journalingStatus: formJournalingStatus || 'COMPLETE'
     };
@@ -873,13 +888,13 @@ export default function JournalView({
     const headers = [
       'ID', 'AccountID', 'Date', 'Time', 'Asset', 'Setup', 'Setup ID', 'Direction', 'Entry', 'Exit', 'Size',
       'Stop Loss', 'Take Profit', 'Gross PnL', 'Commission', 'Swap', 'Other Fees', 'Total Fees',
-      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot'
+      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot', '4HR Screenshot', '1HR Screenshot', '15M Screenshot'
     ];
     const rows = trades.map(t => [
       t.id, t.accountId, t.date, t.time, t.asset, t.setup, t.setupId || '', t.direction, t.entryPrice, t.exitPrice, t.size,
       t.sl, t.tp, t.pnl, t.commission ?? '', t.swap ?? '', t.fee ?? '', getTradeTotalFees(t),
       getTradeNetPnl(t), t.status, t.session, getTradeGrade(t) ?? '', t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
-      t.htfScreenshot || '', t.ltfScreenshot || ''
+      t.htfScreenshot || '', t.ltfScreenshot || '', t.fourHourScreenshot || '', t.oneHourScreenshot || '', t.fifteenMinuteScreenshot || ''
     ].map(escapeCSV).join(','));
 
     downloadFile(
@@ -1550,7 +1565,7 @@ export default function JournalView({
             </div>
           )}
 
-          {/* Screenshot Attachments (HTF and LTF) with Drag & Drop, File Upload, Paste & Permanent Storage */}
+          {/* Screenshot Attachments with Drag & Drop, File Upload, Paste & Permanent Storage */}
           <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
@@ -1576,6 +1591,27 @@ export default function JournalView({
                 onChange={setLtfScreenshot}
                 onOpenLightbox={(url) => setActiveLightboxImg(url)}
                 badgeText="LTF Entry Trigger"
+              />
+              <ScreenshotUploader
+                label="4 Hour Screenshot (4HR)"
+                value={fourHourScreenshot}
+                onChange={setFourHourScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="4HR Structure"
+              />
+              <ScreenshotUploader
+                label="1 Hour Screenshot (1HR)"
+                value={oneHourScreenshot}
+                onChange={setOneHourScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="1HR Context"
+              />
+              <ScreenshotUploader
+                label="15 Minute Screenshot (15M)"
+                value={fifteenMinuteScreenshot}
+                onChange={setFifteenMinuteScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="15M Execution"
               />
             </div>
 
@@ -2254,58 +2290,33 @@ export default function JournalView({
                                 )}
                               </div>
 
-                              {/* HTF and LTF Chart screenshots */}
-                              {(trade.htfScreenshot || trade.ltfScreenshot) ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                                  {trade.htfScreenshot && (
-                                    <div className="space-y-2">
-                                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider block flex items-center gap-1">
+                              {/* Saved chart screenshots */}
+                              {(trade.htfScreenshot || trade.ltfScreenshot || trade.fourHourScreenshot || trade.oneHourScreenshot || trade.fifteenMinuteScreenshot) ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-1">
+                                  {[
+                                    { image: trade.htfScreenshot, label: 'High Timeframe Structure (HTF SS)' },
+                                    { image: trade.ltfScreenshot, label: 'Low Timeframe Entry (LTF SS)' },
+                                    { image: trade.fourHourScreenshot, label: '4 Hour Structure (4HR SS)' },
+                                    { image: trade.oneHourScreenshot, label: '1 Hour Context (1HR SS)' },
+                                    { image: trade.fifteenMinuteScreenshot, label: '15 Minute Execution (15M SS)' },
+                                  ].filter(item => Boolean(item.image)).map(item => (
+                                    <div key={item.label} className="space-y-2">
+                                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                         <ImageIcon size={11} className="text-blue-600" />
-                                        High Timeframe Structure (HTF SS)
+                                        {item.label}
                                       </span>
                                       <div className="relative group overflow-hidden bg-slate-950 aspect-[16/10] rounded-xl border">
-                                        <img 
-                                          src={trade.htfScreenshot} 
-                                          alt="High timeframe setup" 
-                                          referrerPolicy="no-referrer"
-                                          className="w-full h-full object-cover transition duration-300 group-hover:scale-102"
-                                        />
-                                        <button
-                                          onClick={() => setActiveLightboxImg(trade.htfScreenshot || '')}
-                                          className="absolute bottom-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                                        >
+                                        <img src={item.image} alt={item.label} referrerPolicy="no-referrer" className="w-full h-full object-cover transition duration-300 group-hover:scale-102" />
+                                        <button type="button" onClick={() => setActiveLightboxImg(item.image || '')} className="absolute bottom-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition cursor-pointer" aria-label={`Open ${item.label}`}>
                                           <Maximize2 size={11} />
                                         </button>
                                       </div>
                                     </div>
-                                  )}
-
-                                  {trade.ltfScreenshot && (
-                                    <div className="space-y-2">
-                                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider block flex items-center gap-1">
-                                        <ImageIcon size={11} className="text-blue-600" />
-                                        Low Timeframe Entry confirmation (LTF SS)
-                                      </span>
-                                      <div className="relative group overflow-hidden bg-slate-950 aspect-[16/10] rounded-xl border">
-                                        <img 
-                                          src={trade.ltfScreenshot} 
-                                          alt="Low timeframe entries wicks" 
-                                          referrerPolicy="no-referrer"
-                                          className="w-full h-full object-cover transition duration-300 group-hover:scale-102"
-                                        />
-                                        <button
-                                          onClick={() => setActiveLightboxImg(trade.ltfScreenshot || '')}
-                                          className="absolute bottom-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                                        >
-                                          <Maximize2 size={11} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
+                                  ))}
                                 </div>
                               ) : (
                                 <div className="text-3xs text-slate-400 bg-white p-3 border rounded-xl italic">
-                                  No HTF or LTF chart wicks logged. Add chart links to review entries.
+                                  No chart screenshots logged. Add screenshots to review this execution.
                                 </div>
                               )}
 

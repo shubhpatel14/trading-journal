@@ -140,6 +140,9 @@ const normalizeFirestoreTrade = (trade: Trade): Trade => ({
   mistakes: Array.isArray(trade.mistakes) ? trade.mistakes : [],
   htfScreenshot: trade.htfScreenshot || '',
   ltfScreenshot: trade.ltfScreenshot || '',
+  fourHourScreenshot: trade.fourHourScreenshot || '',
+  oneHourScreenshot: trade.oneHourScreenshot || '',
+  fifteenMinuteScreenshot: trade.fifteenMinuteScreenshot || '',
   journalingStatus: trade.journalingStatus || (isTradeJournalComplete(trade) ? 'COMPLETE' : 'PENDING')
 });
 
@@ -173,6 +176,13 @@ const mergeRemoteTradeWithLocalJournal = (remoteTrade: Trade, localTrade: Trade)
     merged.tradeGrade = localGrade;
     shouldWriteBack = true;
   }
+
+  (['fourHourScreenshot', 'oneHourScreenshot', 'fifteenMinuteScreenshot'] as const).forEach(field => {
+    if (isNonEmptyText(localTrade[field]) && !isNonEmptyText(remoteTrade[field])) {
+      merged[field] = localTrade[field];
+      shouldWriteBack = true;
+    }
+  });
 
   if (isTradeJournalComplete(localTrade) && !isTradeJournalComplete(remoteTrade)) {
     merged.journalingStatus = 'COMPLETE';
@@ -1574,12 +1584,12 @@ export default function App() {
             <nav className="hidden lg:flex gap-1.5 xl:gap-2">
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                { id: 'setups', label: 'Playbooks', icon: FolderOpen },
-                { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
-                { id: 'trade-review', label: 'Trade Review', icon: ListChecks },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
-                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit }
+                { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
+                { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
+                { id: 'setups', label: 'Playbooks', icon: FolderOpen },
+                { id: 'trade-review', label: 'Trade Review', icon: ListChecks }
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = currentTab === tab.id;
@@ -1677,12 +1687,12 @@ export default function App() {
         <div className="flex min-w-max justify-around items-center px-1 py-1.5">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { id: 'journal', label: 'Journal Logs', icon: BookOpen },
+            { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
+            { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
+            { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
             { id: 'setups', label: 'Playbooks', icon: FolderOpen },
-            { id: 'plans', label: 'Plan + Review', icon: ClipboardCheck },
-            { id: 'journal', label: 'Journal', icon: BookOpen },
-            { id: 'trade-review', label: 'Review', icon: ListChecks },
-            { id: 'calendar', label: 'Calendar', icon: Calendar },
-            { id: 'insights', label: 'Insights', icon: BrainCircuit }
+            { id: 'trade-review', label: 'Trade Review', icon: ListChecks }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
