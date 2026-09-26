@@ -1,17 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowDownRight,
+  ArrowUp,
   ArrowUpRight,
   CalendarDays,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Eye,
   Image as ImageIcon,
+  Layers,
   Maximize2,
   NotebookPen,
   Search,
+  Target,
   X,
 } from 'lucide-react';
 import { Trade, TradingAccount, getTradeNetPnl, getTradeTotalFees } from '../types';
@@ -72,34 +78,41 @@ function Stat({ label, value, tone = 'default' }: { label: string; value: React.
 function ScreenshotPanel({
   image,
   label,
+  timeframeTag,
   onOpen,
 }: {
   image?: string;
   label: string;
-  onOpen: (image: string) => void;
+  timeframeTag?: string;
+  onOpen: () => void;
 }) {
   return (
     <div className="overflow-hidden rounded-[28px] bg-white/70 shadow-clayCard">
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <ImageIcon size={15} className="text-clay-accent" />
+          {timeframeTag && (
+            <span className="rounded-lg bg-purple-100 border border-purple-200/80 px-1.5 py-0.5 text-4xs font-black text-purple-700 font-mono">
+              {timeframeTag}
+            </span>
+          )}
           <span className="text-2xs font-extrabold uppercase tracking-wider text-clay-foreground">{label}</span>
         </div>
         {image && (
           <button
             type="button"
-            onClick={() => onOpen(image)}
+            onClick={onOpen}
             className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-3xs font-bold text-clay-accent transition hover:bg-purple-50 cursor-pointer"
           >
             <Maximize2 size={13} />
-            Expand
+            Zoom
           </button>
         )}
       </div>
       {image ? (
         <button
           type="button"
-          onClick={() => onOpen(image)}
+          onClick={onOpen}
           className="group relative block w-full cursor-zoom-in overflow-hidden bg-slate-100"
           aria-label={`Open ${label}`}
         >
@@ -110,7 +123,7 @@ function ScreenshotPanel({
           />
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/0 transition group-hover:bg-slate-950/10">
             <span className="translate-y-2 rounded-full bg-slate-950/75 px-3 py-2 text-xs font-bold text-white opacity-0 transition group-hover:translate-y-0 group-hover:opacity-100">
-              View full size
+              View full size zoom
             </span>
           </div>
         </button>
@@ -138,6 +151,8 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
   const [isSaving, setIsSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [isZoomGalleryOpen, setIsZoomGalleryOpen] = useState(false);
+  const [currentScreenshotIndex, setCurrentScreenshotIndex] = useState(0);
 
   const visibleTrades = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -216,21 +231,156 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
     await saveTrade(true);
   };
 
-  const moveSelection = (direction: -1 | 1) => {
+  const moveSelection = useCallback((direction: -1 | 1) => {
     if (!selectedTrade || visibleTrades.length < 2) return;
     const index = visibleTrades.findIndex((trade) => trade.id === selectedTrade.id);
     const nextIndex = Math.min(Math.max(index + direction, 0), visibleTrades.length - 1);
     const nextTrade = visibleTrades[nextIndex];
+    if (!nextTrade) return;
     setSelectedTradeId(nextTrade.id);
     const nextDateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(nextTrade).date);
     setCurrentPage(Math.floor(nextDateIndex / DAYS_PER_PAGE) + 1);
-  };
+  }, [selectedTrade, visibleTrades, uniqueDates]);
 
   const selectTrade = (trade: Trade) => {
     setSelectedTradeId(trade.id);
     const dateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(trade).date);
     if (dateIndex >= 0) setCurrentPage(Math.floor(dateIndex / DAYS_PER_PAGE) + 1);
   };
+
+  const account = selectedTrade ? accounts.find((item) => item.id === selectedTrade.accountId) : undefined;
+  const display = selectedTrade ? getTradeDisplayDateTime(selectedTrade) : null;
+  const totalFees = selectedTrade ? getTradeTotalFees(selectedTrade, account?.commissionPerLot ?? 7) : 0;
+  const netPnl = selectedTrade ? getTradeNetPnl(selectedTrade, account?.commissionPerLot ?? 7) : 0;
+  const plannedRisk = selectedTrade ? Math.abs(selectedTrade.entryPrice - selectedTrade.sl) : 0;
+  const plannedReward = selectedTrade ? Math.abs(selectedTrade.tp - selectedTrade.entryPrice) : 0;
+  const plannedRR = plannedRisk > 0 ? plannedReward / plannedRisk : 0;
+
+  // Strict timeframe order as requested: LTF, HTF, 15m, 1hr, 4hr
+  const orderedScreenshotDefs = useMemo(() => [
+    {
+      key: 'ltf',
+      label: 'LTF',
+      badgeTitle: 'LTF (Entry)',
+      fullName: 'Low Timeframe (Entry) Chart',
+      image: selectedTrade?.ltfScreenshot,
+      description: 'Execution trigger, entry confirmation, candle action and immediate invalidation',
+    },
+    {
+      key: 'htf',
+      label: 'HTF',
+      badgeTitle: 'HTF (Context)',
+      fullName: 'High Timeframe (HTF) Chart',
+      image: selectedTrade?.htfScreenshot,
+      description: 'Macro structure, major support / resistance, high timeframe bias and market regime',
+    },
+    {
+      key: '15m',
+      label: '15m',
+      badgeTitle: '15 Min Structure',
+      fullName: '15 Minute Chart',
+      image: selectedTrade?.fifteenMinuteScreenshot,
+      description: 'Intermediate market structure, liquidity sweeps, order blocks and session ranges',
+    },
+    {
+      key: '1hr',
+      label: '1hr',
+      badgeTitle: '1 Hour Trend',
+      fullName: '1 Hour Chart',
+      image: selectedTrade?.oneHourScreenshot,
+      description: 'Hourly trend alignment, fair value gaps, key levels and structural shifts',
+    },
+    {
+      key: '4hr',
+      label: '4hr',
+      badgeTitle: '4 Hour Trend',
+      fullName: '4 Hour Chart',
+      image: selectedTrade?.fourHourScreenshot,
+      description: 'Swing structure, 4H supply & demand zones, overarching market narrative',
+    },
+  ], [selectedTrade]);
+
+  const availableScreenshots = useMemo(() => {
+    return orderedScreenshotDefs.filter(
+      (item): item is typeof item & { image: string } => Boolean(item.image && item.image.trim().length > 0),
+    );
+  }, [orderedScreenshotDefs]);
+
+  const hasScreenshots = availableScreenshots.length > 0;
+
+  const activeMistakes = useMemo(() => {
+    if (!selectedTrade?.mistakes || !Array.isArray(selectedTrade.mistakes)) return [];
+    return selectedTrade.mistakes.filter(
+      (m) => typeof m === 'string' && m.trim().length > 0 && m.trim().toLowerCase() !== 'none',
+    );
+  }, [selectedTrade?.mistakes]);
+
+  const goToPrevScreenshot = useCallback(() => {
+    if (availableScreenshots.length <= 1) return;
+    setCurrentScreenshotIndex((prev) => (prev > 0 ? prev - 1 : availableScreenshots.length - 1));
+  }, [availableScreenshots.length]);
+
+  const goToNextScreenshot = useCallback(() => {
+    if (availableScreenshots.length <= 1) return;
+    setCurrentScreenshotIndex((prev) => (prev < availableScreenshots.length - 1 ? prev + 1 : 0));
+  }, [availableScreenshots.length]);
+
+  // Handle keyboard navigation: Left/Right arrows in Review tab to change trades,
+  // and Left/Right arrows in Screenshot Viewer to change screenshots!
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // If user is currently typing in an input or textarea, don't intercept arrow keys
+      const target = e.target as HTMLElement | null;
+      const isEditing = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      );
+      if (isEditing) return;
+
+      if (isZoomGalleryOpen) {
+        if (e.key === 'Escape') {
+          setIsZoomGalleryOpen(false);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          goToPrevScreenshot();
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          goToNextScreenshot();
+        }
+      } else {
+        // Trade Review Tab keyboard shortcuts for Previous / Next trade
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          moveSelection(-1);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          moveSelection(1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isZoomGalleryOpen, goToPrevScreenshot, goToNextScreenshot, moveSelection]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (!isZoomGalleryOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isZoomGalleryOpen]);
+
+  const openZoomForTimeframe = (timeframeKey: string) => {
+    const index = availableScreenshots.findIndex((item) => item.key === timeframeKey);
+    setCurrentScreenshotIndex(index >= 0 ? index : 0);
+    setIsZoomGalleryOpen(true);
+  };
+
+  const activeScreenshot = availableScreenshots[currentScreenshotIndex] || availableScreenshots[0];
 
   if (sortedTrades.length === 0) {
     return (
@@ -242,16 +392,9 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
     );
   }
 
-  const account = selectedTrade ? accounts.find((item) => item.id === selectedTrade.accountId) : undefined;
-  const display = selectedTrade ? getTradeDisplayDateTime(selectedTrade) : null;
-  const totalFees = selectedTrade ? getTradeTotalFees(selectedTrade, account?.commissionPerLot ?? 7) : 0;
-  const netPnl = selectedTrade ? getTradeNetPnl(selectedTrade, account?.commissionPerLot ?? 7) : 0;
-  const plannedRisk = selectedTrade ? Math.abs(selectedTrade.entryPrice - selectedTrade.sl) : 0;
-  const plannedReward = selectedTrade ? Math.abs(selectedTrade.tp - selectedTrade.entryPrice) : 0;
-  const plannedRR = plannedRisk > 0 ? plannedReward / plannedRisk : 0;
-
   return (
     <div className="space-y-6" id="trade-review-tab">
+      {/* Lightbox for fallback single image view */}
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-md sm:p-8" onClick={() => setLightbox(null)}>
           <div className="relative flex h-full w-full max-w-7xl items-center justify-center" onClick={(event) => event.stopPropagation()}>
@@ -263,13 +406,196 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
         </div>
       )}
 
+      {/* Zoom Mode Gallery Modal: Horizontal Slide Viewer with Middle Corner Navigation Buttons */}
+      {isZoomGalleryOpen && selectedTrade && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-xl text-white overflow-hidden animate-in fade-in duration-200 select-none"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Trade screenshots zoom view"
+        >
+          {/* Sticky Top Header inside Zoom Mode */}
+          <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800/80 bg-slate-950/90 px-4 py-3 sm:px-6 backdrop-blur-md">
+            {/* Left: Trade Context & Outcomes */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md ${
+                  selectedTrade.direction === 'BUY'
+                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-700'
+                    : 'bg-gradient-to-br from-rose-500 to-rose-700'
+                }`}
+              >
+                {selectedTrade.direction === 'BUY' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-black text-lg text-white">{selectedTrade.asset}</span>
+                  <span
+                    className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-lg border ${
+                      netPnl >= 0 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                    }`}
+                  >
+                    {netPnl >= 0 ? '+' : ''}{formatMoney(netPnl, account?.currency)} Net
+                  </span>
+                  <span className="hidden sm:inline-block text-xs font-semibold text-slate-300 font-mono">
+                    Strategy: {selectedTrade.setup || 'Discretionary'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Center: Jump to Timeframe Pills */}
+            <div className="hidden md:flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl p-1">
+              {orderedScreenshotDefs.map((def) => {
+                const targetIdx = availableScreenshots.findIndex((s) => s.key === def.key);
+                const isAttached = targetIdx >= 0;
+                const isActive = isAttached && targetIdx === currentScreenshotIndex;
+                return (
+                  <button
+                    key={def.key}
+                    type="button"
+                    onClick={() => {
+                      if (isAttached) {
+                        setCurrentScreenshotIndex(targetIdx);
+                      }
+                    }}
+                    disabled={!isAttached}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
+                      isActive
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md scale-105'
+                        : isAttached
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                        : 'text-slate-600 cursor-not-allowed opacity-30'
+                    }`}
+                    title={isAttached ? `View ${def.fullName}` : `No ${def.label} screenshot attached`}
+                  >
+                    <span>{def.label}</span>
+                    {isAttached && <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-emerald-400'}`} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Right: Mark as Reviewed + Close Button */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleReviewed}
+                disabled={isSaving}
+                className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition cursor-pointer shadow-sm ${
+                  selectedTrade.reviewedAt
+                    ? 'bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 border border-purple-500/50'
+                    : 'bg-purple-600 hover:bg-purple-500 text-white'
+                }`}
+              >
+                <CheckCircle2 size={15} />
+                <span>{selectedTrade.reviewedAt ? 'Reviewed ✓' : 'Mark Reviewed'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsZoomGalleryOpen(false)}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 transition cursor-pointer"
+                aria-label="Close zoom viewer"
+              >
+                <X size={16} />
+                <span className="hidden sm:inline">Close (Esc)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Middle Screen Canvas with Left and Right Arrows in Middle Corners */}
+          <div className="relative flex-1 flex items-center justify-center p-4 sm:p-8 min-h-0 overflow-hidden">
+            {/* Middle Left Corner Arrow Button */}
+            {availableScreenshots.length > 1 && (
+              <button
+                type="button"
+                onClick={goToPrevScreenshot}
+                className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900/90 hover:bg-purple-600 active:scale-90 text-white shadow-2xl border border-white/20 backdrop-blur-md transition-all cursor-pointer group"
+                aria-label="Previous screenshot (Left arrow)"
+                title="Previous screenshot (◄ Left Arrow key)"
+              >
+                <ChevronLeft size={32} className="transition-transform group-hover:-translate-x-0.5" />
+              </button>
+            )}
+
+            {/* Middle Right Corner Arrow Button */}
+            {availableScreenshots.length > 1 && (
+              <button
+                type="button"
+                onClick={goToNextScreenshot}
+                className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900/90 hover:bg-purple-600 active:scale-90 text-white shadow-2xl border border-white/20 backdrop-blur-md transition-all cursor-pointer group"
+                aria-label="Next screenshot (Right arrow)"
+                title="Next screenshot (► Right Arrow key)"
+              >
+                <ChevronRight size={32} className="transition-transform group-hover:translate-x-0.5" />
+              </button>
+            )}
+
+            {/* Current Active Screenshot */}
+            {availableScreenshots.length > 0 && activeScreenshot ? (
+              <div className="relative max-h-full max-w-full flex flex-col items-center justify-center">
+                <img
+                  key={activeScreenshot.key}
+                  src={activeScreenshot.image}
+                  alt={activeScreenshot.fullName}
+                  className="max-h-[75vh] max-w-[88vw] sm:max-w-[82vw] object-contain rounded-2xl bg-black/75 shadow-2xl border border-white/10 select-none animate-in fade-in zoom-in-95 duration-150"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
+                <ImageIcon size={48} className="opacity-40 text-rose-400" />
+                <p className="text-base font-bold text-white">No screenshots attached to this trade</p>
+                <p className="text-xs text-slate-400">Attach chart screenshots in the Journal tab to view them here.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Bar: Slide Info, Keyboard Navigation Prompt, Full Size Link */}
+          {availableScreenshots.length > 0 && activeScreenshot && (
+            <div className="flex items-center justify-between border-t border-slate-800/80 bg-slate-950/90 px-4 py-2.5 sm:px-6 backdrop-blur-md text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-mono font-black text-purple-400 text-sm">
+                  {activeScreenshot.label}
+                </span>
+                <span className="text-slate-300 font-bold truncate">
+                  {activeScreenshot.fullName}
+                </span>
+                <span className="hidden lg:inline text-slate-500 font-medium truncate">
+                  — {activeScreenshot.description}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                {availableScreenshots.length > 1 && (
+                  <span className="text-3xs text-slate-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg">
+                    {currentScreenshotIndex + 1} of {availableScreenshots.length} · Use <kbd className="font-mono text-purple-300">◄</kbd> <kbd className="font-mono text-purple-300">►</kbd> Arrow keys
+                  </span>
+                )}
+                <a
+                  href={activeScreenshot.image}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-3xs font-bold text-slate-300 transition"
+                  title="Open original image in new tab"
+                >
+                  <Maximize2 size={12} />
+                  <span>Full Size</span>
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Header section */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="mb-2 flex items-center gap-2 text-2xs font-extrabold uppercase tracking-[0.16em] text-clay-accent">
             <CheckCircle2 size={15} /> Focused review workspace
           </div>
           <h1 className="text-3xl tracking-tight">Trade Review</h1>
-          <p className="mt-1 text-sm text-clay-muted">Inspect the full execution, study both charts, capture the lesson, then close the review.</p>
+          <p className="mt-1 text-sm text-clay-muted">Inspect execution, zoom all timeframes in sequence, analyze mistakes &amp; strategy, and close the review.</p>
         </div>
         <div className="clay-pill self-start sm:self-auto">
           <Check size={13} className="text-emerald-600" />
@@ -340,41 +666,222 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
 
         {selectedTrade && display && (
           <section className="min-w-0 space-y-6">
-            <div className="clay-surface p-5 sm:p-6">
-              <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
-                <div className="flex items-start gap-3">
-                  <div className={`rounded-2xl p-3 text-white shadow-clayButton ${selectedTrade.direction === 'BUY' ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-rose-400 to-rose-600'}`}>
-                    {selectedTrade.direction === 'BUY' ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
+            {/* Top Bar with PNL, Mistakes Tagged, Strategy Used, Mark as Reviewed Button, See Screenshots Button */}
+            <div className="clay-surface px-5 py-4 space-y-2.5">
+              {/* Row 1: Core Trade Identity + Action Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Left: Direction Icon + Asset Symbol + Status + Net PnL */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-clayButton ${
+                      selectedTrade.direction === 'BUY'
+                        ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                        : 'bg-gradient-to-br from-rose-400 to-rose-600'
+                    }`}
+                  >
+                    {selectedTrade.direction === 'BUY' ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                   </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-2xl font-black font-mono">{selectedTrade.asset}</h2>
-                      <span className={`rounded-full px-2.5 py-1 text-4xs font-black uppercase tracking-wider ${netPnl >= 0 ? 'bg-emerald-100 text-emerald-700' : netPnl < 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{selectedTrade.status}</span>
-                      {selectedTrade.reviewedAt && <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-4xs font-black uppercase tracking-wider text-purple-700"><CheckCircle2 size={11} /> Reviewed</span>}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-clay-muted">
-                      <span className="flex items-center gap-1.5"><CalendarDays size={13} />{formatDate(display.date)}</span>
-                      <span className="flex items-center gap-1.5"><Clock3 size={13} />{display.time}{display.isIstConversion ? ' IST' : ''}</span>
-                      <span>{selectedTrade.session}</span>
-                      <span>{account?.name || 'Unknown account'}</span>
-                    </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h2 className="font-mono text-xl sm:text-2xl font-black text-clay-foreground tracking-tight">
+                      {selectedTrade.asset}
+                    </h2>
+
+                    <span
+                      className={`rounded-lg px-2 py-0.5 text-3xs font-extrabold uppercase tracking-wider ${
+                        selectedTrade.status === 'WIN'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : selectedTrade.status === 'LOSS'
+                          ? 'bg-rose-100 text-rose-700'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {selectedTrade.status}
+                    </span>
+
+                    {/* Net PnL Tag */}
+                    <span
+                      className={`font-mono text-xs sm:text-sm font-black px-2.5 py-0.5 rounded-lg border ${
+                        netPnl >= 0
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
+                      }`}
+                      title={`Net: ${formatMoney(netPnl, account?.currency)} (Gross: ${formatMoney(selectedTrade.pnl, account?.currency)})`}
+                    >
+                      {netPnl >= 0 ? '+' : ''}{formatMoney(netPnl, account?.currency)}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 self-end xl:self-auto">
-                  <button type="button" onClick={() => moveSelection(-1)} disabled={visibleTrades.findIndex((trade) => trade.id === selectedTrade.id) <= 0} className="clay-button clay-button-secondary min-h-0 p-2.5 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous trade"><ChevronLeft size={16} /></button>
-                  <button type="button" onClick={() => moveSelection(1)} disabled={visibleTrades.findIndex((trade) => trade.id === selectedTrade.id) >= visibleTrades.length - 1} className="clay-button clay-button-secondary min-h-0 p-2.5 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next trade"><ChevronRight size={16} /></button>
+
+                {/* Right: Actions (Screenshots, Mark Reviewed, Prev/Next) */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* See Screenshots Button */}
+                  {hasScreenshots ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentScreenshotIndex(0);
+                        setIsZoomGalleryOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3 py-1.5 text-xs font-bold shadow-sm transition cursor-pointer"
+                      title="Inspect all screenshots in zoom mode"
+                    >
+                      <Eye size={14} />
+                      <span>Screenshots ({availableScreenshots.length})</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex items-center gap-1.5 rounded-xl bg-rose-500/80 text-white px-3 py-1.5 text-xs font-bold opacity-75 cursor-not-allowed"
+                      title="No screenshots attached to this trade"
+                    >
+                      <ImageIcon size={14} />
+                      <span>No Screenshots</span>
+                    </button>
+                  )}
+
+                  {/* Mark as Reviewed Button */}
+                  <button
+                    type="button"
+                    onClick={toggleReviewed}
+                    disabled={isSaving}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                      selectedTrade.reviewedAt
+                        ? 'bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-200 shadow-sm'
+                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-clayButton active:scale-95'
+                    }`}
+                    title={selectedTrade.reviewedAt ? 'Click to mark as pending' : 'Click to mark trade as reviewed'}
+                  >
+                    <CheckCircle2 size={14} className={selectedTrade.reviewedAt ? 'text-purple-700' : 'text-white'} />
+                    <span>{isSaving ? 'Saving…' : selectedTrade.reviewedAt ? 'Reviewed' : 'Mark Reviewed'}</span>
+                  </button>
+
+                  {/* Prev / Next Chevrons */}
+                  <div className="flex items-center gap-1 pl-1">
+                    <button
+                      type="button"
+                      onClick={() => moveSelection(-1)}
+                      disabled={visibleTrades.findIndex((trade) => trade.id === selectedTrade.id) <= 0}
+                      className="rounded-xl bg-white/80 p-1.5 text-clay-foreground shadow-sm hover:bg-white disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                      aria-label="Previous trade"
+                      title="Previous trade"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSelection(1)}
+                      disabled={visibleTrades.findIndex((trade) => trade.id === selectedTrade.id) >= visibleTrades.length - 1}
+                      className="rounded-xl bg-white/80 p-1.5 text-clay-foreground shadow-sm hover:bg-white disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                      aria-label="Next trade"
+                      title="Next trade"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Metadata (Date, Time, Session, Account) + Context (Strategy, Mistakes) */}
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-2 border-t border-slate-200/50 text-2xs font-medium">
+                {/* Left: Time and Broker Details */}
+                <div className="flex items-center gap-2 text-clay-muted">
+                  <span className="flex items-center gap-1 font-bold">
+                    <CalendarDays size={12} className="text-clay-accent" />
+                    {formatDate(display.date)}
+                  </span>
+                  <span>·</span>
+                  <span className="flex items-center gap-1 font-bold">
+                    <Clock3 size={12} className="text-clay-accent" />
+                    {display.time}{display.isIstConversion ? ' IST' : ''}
+                  </span>
+                  {Boolean(selectedTrade.session) && (
+                    <>
+                      <span>·</span>
+                      <span className="uppercase tracking-wider font-bold">{selectedTrade.session}</span>
+                    </>
+                  )}
+                  {Boolean(account?.name) && (
+                    <>
+                      <span>·</span>
+                      <span className="font-bold text-clay-foreground">{account.name}</span>
+                    </>
+                  )}
+                </div>
+
+                {/* Right: Strategy & Mistakes in a sleek, lightweight format */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Strategy */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-clay-muted font-bold flex items-center gap-1">
+                      <Target size={12} className="text-purple-600" />
+                      Strategy:
+                    </span>
+                    <span className="font-mono font-bold text-purple-900 bg-purple-50/80 border border-purple-200/60 px-2 py-0.5 rounded-md">
+                      {selectedTrade.setup || 'Discretionary'}
+                    </span>
+                  </div>
+
+                  {/* Mistakes */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-clay-muted font-bold flex items-center gap-1">
+                      <AlertTriangle size={12} className={activeMistakes.length > 0 ? 'text-rose-500' : 'text-emerald-500'} />
+                      Mistakes:
+                    </span>
+                    {activeMistakes.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {activeMistakes.map((mistake) => (
+                          <span key={mistake} className="rounded-md bg-rose-50 border border-rose-200/70 px-2 py-0.5 font-bold text-rose-700">
+                            {mistake}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="rounded-md bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 font-bold text-emerald-700 flex items-center gap-1">
+                        <Check size={10} /> None
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
 
+            {/* Screenshots grid arranged strictly in requested order: LTF, HTF, 15m, 1hr, 4hr */}
             <div className="grid gap-5 xl:grid-cols-2">
-              <ScreenshotPanel image={selectedTrade.htfScreenshot} label="High timeframe chart" onOpen={setLightbox} />
-              <ScreenshotPanel image={selectedTrade.ltfScreenshot} label="Entry timeframe chart" onOpen={setLightbox} />
-              <ScreenshotPanel image={selectedTrade.fourHourScreenshot} label="4 hour chart" onOpen={setLightbox} />
-              <ScreenshotPanel image={selectedTrade.oneHourScreenshot} label="1 hour chart" onOpen={setLightbox} />
-              <ScreenshotPanel image={selectedTrade.fifteenMinuteScreenshot} label="15 minute chart" onOpen={setLightbox} />
+              <ScreenshotPanel
+                image={selectedTrade.ltfScreenshot}
+                timeframeTag="1. LTF"
+                label="Entry timeframe chart"
+                onOpen={() => openZoomForTimeframe('ltf')}
+              />
+              <ScreenshotPanel
+                image={selectedTrade.htfScreenshot}
+                timeframeTag="2. HTF"
+                label="High timeframe chart"
+                onOpen={() => openZoomForTimeframe('htf')}
+              />
+              <ScreenshotPanel
+                image={selectedTrade.fifteenMinuteScreenshot}
+                timeframeTag="3. 15m"
+                label="15 minute chart"
+                onOpen={() => openZoomForTimeframe('15m')}
+              />
+              <ScreenshotPanel
+                image={selectedTrade.oneHourScreenshot}
+                timeframeTag="4. 1hr"
+                label="1 hour chart"
+                onOpen={() => openZoomForTimeframe('1hr')}
+              />
+              <ScreenshotPanel
+                image={selectedTrade.fourHourScreenshot}
+                timeframeTag="5. 4hr"
+                label="4 hour chart"
+                onOpen={() => openZoomForTimeframe('4hr')}
+              />
             </div>
 
+            {/* Trade execution statistics */}
             <div className="clay-surface p-5 sm:p-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
@@ -413,8 +920,12 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
                 <div className="clay-pressed rounded-2xl p-4">
                   <div className="text-4xs font-extrabold uppercase tracking-[0.12em] text-clay-muted">Mistakes tagged</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedTrade.mistakes?.length && selectedTrade.mistakes.some((mistake) => mistake !== 'None')
-                      ? selectedTrade.mistakes.filter((mistake) => mistake !== 'None').map((mistake) => <span key={mistake} className="rounded-full bg-rose-100 px-2.5 py-1 text-3xs font-bold text-rose-700">{mistake}</span>)
+                    {activeMistakes.length > 0
+                      ? activeMistakes.map((mistake) => (
+                          <span key={mistake} className="rounded-full bg-rose-100 px-2.5 py-1 text-3xs font-bold text-rose-700">
+                            {mistake}
+                          </span>
+                        ))
                       : <span className="text-xs font-bold text-emerald-600">No mistakes tagged</span>}
                   </div>
                 </div>
@@ -425,6 +936,7 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
               </div>
             </div>
 
+            {/* Review notes and action section */}
             <div className="clay-surface p-5 sm:p-6">
               <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div>
