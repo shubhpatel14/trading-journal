@@ -477,33 +477,27 @@ export default function ReviewView({
                     )}
 
                     {/* Screenshots */}
-                    {(t.htfScreenshot || t.ltfScreenshot) && (
-                      <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
-                        {t.htfScreenshot && (
+                    {(t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot) && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap">
+                        {[
+                          { img: t.ltfScreenshot, tag: '1M', label: '1M Chart' },
+                          { img: t.htfScreenshot, tag: '5M', label: '5M Chart' },
+                          { img: t.fifteenMinuteScreenshot, tag: '15M', label: '15M Chart' },
+                          { img: t.oneHourScreenshot, tag: '1HR', label: '1HR Chart' },
+                          { img: t.fourHourScreenshot, tag: '4HR', label: '4HR Chart' },
+                        ].filter(item => Boolean(item.img)).map((item, idx) => (
                           <div 
+                            key={idx}
                             className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 max-w-[120px]"
-                            onClick={() => setActiveLightboxImg(t.htfScreenshot!)}
+                            onClick={() => setActiveLightboxImg(item.img!)}
                           >
-                            <img src={t.htfScreenshot} alt="HTF Chart" className="w-full h-16 object-cover group-hover:scale-105 transition" />
+                            <img src={item.img} alt={item.label} className="w-full h-16 object-cover group-hover:scale-105 transition" />
                             <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
                               <Maximize2 size={14} />
                             </div>
-                            <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-slate-900/70 text-white px-1 rounded">HTF</span>
+                            <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-slate-900/70 text-white px-1 rounded">{item.tag}</span>
                           </div>
-                        )}
-
-                        {t.ltfScreenshot && (
-                          <div 
-                            className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 max-w-[120px]"
-                            onClick={() => setActiveLightboxImg(t.ltfScreenshot!)}
-                          >
-                            <img src={t.ltfScreenshot} alt="LTF Chart" className="w-full h-16 object-cover group-hover:scale-105 transition" />
-                            <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
-                              <Maximize2 size={14} />
-                            </div>
-                            <span className="absolute bottom-1 left-1 text-[9px] font-bold bg-slate-900/70 text-white px-1 rounded">LTF</span>
-                          </div>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>
@@ -912,11 +906,11 @@ export default function ReviewView({
               Key Trade Execution Screenshots for the Week
             </h2>
 
-            {weekTrades.filter(t => t.htfScreenshot || t.ltfScreenshot).length === 0 ? (
+            {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot).length === 0 ? (
               <p className="text-xs text-slate-400 italic">No trade screenshots uploaded for trades in this week.</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {weekTrades.filter(t => t.htfScreenshot || t.ltfScreenshot).slice(0, 8).map((t) => (
+                {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot).slice(0, 8).map((t) => (
                   <div key={t.id} className="bg-white p-3 rounded-2xl border border-slate-100 space-y-2">
                     <div className="flex justify-between items-center text-xs font-bold">
                       <span className="font-mono">{t.asset} ({t.direction})</span>
@@ -925,29 +919,26 @@ export default function ReviewView({
                       </span>
                     </div>
 
-                    <div className="flex gap-2">
-                      {t.htfScreenshot && (
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { img: t.ltfScreenshot, tag: '1M' },
+                        { img: t.htfScreenshot, tag: '5M' },
+                        { img: t.fifteenMinuteScreenshot, tag: '15M' },
+                        { img: t.oneHourScreenshot, tag: '1HR' },
+                        { img: t.fourHourScreenshot, tag: '4HR' },
+                      ].filter(item => Boolean(item.img)).map((item, idx) => (
                         <div 
-                          className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 flex-1 h-20"
-                          onClick={() => setActiveLightboxImg(t.htfScreenshot!)}
+                          key={idx}
+                          className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 flex-1 min-w-[50px] h-20"
+                          onClick={() => setActiveLightboxImg(item.img!)}
                         >
-                          <img src={t.htfScreenshot} alt="HTF" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                          <img src={item.img} alt={item.tag} className="w-full h-full object-cover group-hover:scale-105 transition" />
                           <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
                             <Maximize2 size={14} />
                           </div>
+                          <span className="absolute bottom-1 left-1 text-[8px] font-bold bg-slate-900/70 text-white px-1 rounded">{item.tag}</span>
                         </div>
-                      )}
-                      {t.ltfScreenshot && (
-                        <div 
-                          className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 flex-1 h-20"
-                          onClick={() => setActiveLightboxImg(t.ltfScreenshot!)}
-                        >
-                          <img src={t.ltfScreenshot} alt="LTF" className="w-full h-full object-cover group-hover:scale-105 transition" />
-                          <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
-                            <Maximize2 size={14} />
-                          </div>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 ))}

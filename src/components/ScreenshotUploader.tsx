@@ -104,7 +104,7 @@ export default function ScreenshotUploader({
     <div
       ref={containerRef}
       onPaste={handlePaste}
-      className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2.5 transition-all hover:border-slate-300"
+      className="p-3.5 bg-slate-50/90 hover:bg-white rounded-2xl border border-slate-200/80 hover:border-blue-300/80 space-y-2.5 transition-all duration-200 hover:shadow-sm"
     >
       <div className="flex items-center justify-between">
         <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
@@ -119,11 +119,11 @@ export default function ScreenshotUploader({
       </div>
 
       {value ? (
-        <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-sm max-h-[180px] flex items-center justify-center">
+        <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-900 shadow-sm max-h-[180px] flex items-center justify-center transition-all duration-300 hover:border-blue-400/50">
           <img
             src={value}
             alt={label}
-            className="w-full h-auto max-h-[180px] object-cover object-center group-hover:opacity-90 transition cursor-pointer"
+            className="w-full h-auto max-h-[180px] object-cover object-center group-hover:scale-[1.03] transition-transform duration-300 cursor-pointer"
             onClick={() => onOpenLightbox && onOpenLightbox(value)}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-between p-2.5">

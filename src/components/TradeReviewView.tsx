@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -256,45 +257,45 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
   const plannedReward = selectedTrade ? Math.abs(selectedTrade.tp - selectedTrade.entryPrice) : 0;
   const plannedRR = plannedRisk > 0 ? plannedReward / plannedRisk : 0;
 
-  // Strict timeframe order as requested: LTF, HTF, 15m, 1hr, 4hr
+  // Strict timeframe order from small to large: 1M (LTF), 5M (HTF), 15M, 1HR, 4HR
   const orderedScreenshotDefs = useMemo(() => [
     {
-      key: 'ltf',
-      label: 'LTF',
-      badgeTitle: 'LTF (Entry)',
-      fullName: 'Low Timeframe (Entry) Chart',
+      key: '1m',
+      label: '1M',
+      badgeTitle: '1M (Entry)',
+      fullName: '1 Minute (1M) Entry Chart',
       image: selectedTrade?.ltfScreenshot,
-      description: 'Execution trigger, entry confirmation, candle action and immediate invalidation',
+      description: 'Execution trigger, 1-minute entry confirmation, candle action and immediate invalidation',
     },
     {
-      key: 'htf',
-      label: 'HTF',
-      badgeTitle: 'HTF (Context)',
-      fullName: 'High Timeframe (HTF) Chart',
+      key: '5m',
+      label: '5M',
+      badgeTitle: '5M (Structure)',
+      fullName: '5 Minute (5M) Structure Chart',
       image: selectedTrade?.htfScreenshot,
-      description: 'Macro structure, major support / resistance, high timeframe bias and market regime',
+      description: '5-minute structure, major support / resistance, high timeframe bias and market regime',
     },
     {
       key: '15m',
-      label: '15m',
-      badgeTitle: '15 Min Structure',
-      fullName: '15 Minute Chart',
+      label: '15M',
+      badgeTitle: '15M Structure',
+      fullName: '15 Minute (15M) Chart',
       image: selectedTrade?.fifteenMinuteScreenshot,
       description: 'Intermediate market structure, liquidity sweeps, order blocks and session ranges',
     },
     {
       key: '1hr',
-      label: '1hr',
-      badgeTitle: '1 Hour Trend',
-      fullName: '1 Hour Chart',
+      label: '1HR',
+      badgeTitle: '1HR Trend',
+      fullName: '1 Hour (1HR) Chart',
       image: selectedTrade?.oneHourScreenshot,
       description: 'Hourly trend alignment, fair value gaps, key levels and structural shifts',
     },
     {
       key: '4hr',
-      label: '4hr',
-      badgeTitle: '4 Hour Trend',
-      fullName: '4 Hour Chart',
+      label: '4HR',
+      badgeTitle: '4HR Trend',
+      fullName: '4 Hour (4HR) Chart',
       image: selectedTrade?.fourHourScreenshot,
       description: 'Swing structure, 4H supply & demand zones, overarching market narrative',
     },
@@ -325,11 +326,60 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
     setCurrentScreenshotIndex((prev) => (prev < availableScreenshots.length - 1 ? prev + 1 : 0));
   }, [availableScreenshots.length]);
 
-  // Handle keyboard navigation: Left/Right arrows in Review tab to change trades,
-  // and Left/Right arrows in Screenshot Viewer to change screenshots!
+  const currentTradeIndex = useMemo(() => {
+    if (!selectedTrade) return -1;
+    return visibleTrades.findIndex((trade) => trade.id === selectedTrade.id);
+  }, [selectedTrade, visibleTrades]);
+
+  // Navigate between trades while staying strictly in Zoom Mode
+  const navigateTradeInZoom = useCallback((direction: -1 | 1) => {
+    if (!selectedTrade || visibleTrades.length < 2) return;
+    const index = visibleTrades.findIndex((trade) => trade.id === selectedTrade.id);
+    const nextIndex = Math.min(Math.max(index + direction, 0), visibleTrades.length - 1);
+    const nextTrade = visibleTrades[nextIndex];
+    if (!nextTrade || nextTrade.id === selectedTrade.id) return;
+
+    // Preserve active timeframe key if available on next trade
+    const currentKey = availableScreenshots[currentScreenshotIndex]?.key;
+
+    setSelectedTradeId(nextTrade.id);
+    const nextDateIndex = uniqueDates.indexOf(getTradeDisplayDateTime(nextTrade).date);
+    if (nextDateIndex >= 0) {
+      setCurrentPage(Math.floor(nextDateIndex / DAYS_PER_PAGE) + 1);
+    }
+
+    const nextDefs = [
+      { key: '1m', image: nextTrade.ltfScreenshot },
+      { key: '5m', image: nextTrade.htfScreenshot },
+      { key: '15m', image: nextTrade.fifteenMinuteScreenshot },
+      { key: '1hr', image: nextTrade.oneHourScreenshot },
+      { key: '4hr', image: nextTrade.fourHourScreenshot },
+    ].filter((s) => Boolean(s.image && s.image.trim().length > 0));
+
+    if (currentKey) {
+      const matchIdx = nextDefs.findIndex((s) => s.key === currentKey);
+      if (matchIdx >= 0) {
+        setCurrentScreenshotIndex(matchIdx);
+        return;
+      }
+    }
+    setCurrentScreenshotIndex(0);
+  }, [selectedTrade, visibleTrades, uniqueDates, availableScreenshots, currentScreenshotIndex]);
+
+  // Guard screenshot index bounds on trade change
+  useEffect(() => {
+    if (availableScreenshots.length > 0 && currentScreenshotIndex >= availableScreenshots.length) {
+      setCurrentScreenshotIndex(0);
+    }
+  }, [availableScreenshots.length, currentScreenshotIndex]);
+
+  // Handle keyboard navigation:
+  // - In Zoom Mode: Left/Right arrows cycle screenshots of current trade;
+  //                 Up/Down arrows immediately switch to previous/next trade!
+  // - In Main Review Tab: Left/Right arrows cycle previous/next trade.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If user is currently typing in an input or textarea, don't intercept arrow keys
+      // If user is currently typing in an input or textarea, don't intercept keys
       const target = e.target as HTMLElement | null;
       const isEditing = target && (
         target.tagName === 'INPUT' ||
@@ -347,6 +397,12 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
           goToNextScreenshot();
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          navigateTradeInZoom(1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          navigateTradeInZoom(-1);
         }
       } else {
         // Trade Review Tab keyboard shortcuts for Previous / Next trade
@@ -362,7 +418,7 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isZoomGalleryOpen, goToPrevScreenshot, goToNextScreenshot, moveSelection]);
+  }, [isZoomGalleryOpen, goToPrevScreenshot, goToNextScreenshot, navigateTradeInZoom, moveSelection]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -427,7 +483,7 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
               >
                 {selectedTrade.direction === 'BUY' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
               </div>
-              <div className="min-w-0">
+              <div key={`info-${selectedTrade.id}`} className="min-w-0 animate-trade-badge">
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-black text-lg text-white">{selectedTrade.asset}</span>
                   <span
@@ -442,6 +498,37 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
                   </span>
                 </div>
               </div>
+
+              {/* In-Zoom Up / Down Trade Navigation Controls */}
+              {visibleTrades.length > 1 && (
+                <div key={`nav-${selectedTrade.id}`} className="hidden sm:flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-1 ml-1 shadow-sm animate-trade-badge">
+                  <span className="text-3xs font-mono font-bold text-slate-400">
+                    Trade {currentTradeIndex + 1}/{visibleTrades.length}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => navigateTradeInZoom(-1)}
+                      disabled={currentTradeIndex <= 0}
+                      className="p-1 rounded-lg hover:bg-purple-600 text-slate-300 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Previous trade in zoom mode (▲ Up Arrow key)"
+                      aria-label="Previous trade"
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateTradeInZoom(1)}
+                      disabled={currentTradeIndex >= visibleTrades.length - 1}
+                      className="p-1 rounded-lg hover:bg-purple-600 text-slate-300 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition cursor-pointer"
+                      title="Next trade in zoom mode (▼ Down Arrow key)"
+                      aria-label="Next trade"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Center: Jump to Timeframe Pills */}
@@ -536,17 +623,17 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
             {availableScreenshots.length > 0 && activeScreenshot ? (
               <div className="relative max-h-full max-w-full flex flex-col items-center justify-center">
                 <img
-                  key={activeScreenshot.key}
+                  key={selectedTrade.id}
                   src={activeScreenshot.image}
                   alt={activeScreenshot.fullName}
-                  className="max-h-[75vh] max-w-[88vw] sm:max-w-[82vw] object-contain rounded-2xl bg-black/75 shadow-2xl border border-white/10 select-none animate-in fade-in zoom-in-95 duration-150"
+                  className="max-h-[75vh] max-w-[88vw] sm:max-w-[82vw] object-contain rounded-2xl bg-black/75 shadow-2xl border border-white/10 select-none animate-zoom-image"
                 />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-3 text-slate-400">
                 <ImageIcon size={48} className="opacity-40 text-rose-400" />
                 <p className="text-base font-bold text-white">No screenshots attached to this trade</p>
-                <p className="text-xs text-slate-400">Attach chart screenshots in the Journal tab to view them here.</p>
+                <p className="text-xs text-slate-400">Use <kbd className="font-mono text-purple-300">▲</kbd> / <kbd className="font-mono text-purple-300">▼</kbd> arrow keys to switch trades in zoom mode.</p>
               </div>
             )}
           </div>
@@ -567,11 +654,20 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
               </div>
 
               <div className="flex items-center gap-3 shrink-0">
-                {availableScreenshots.length > 1 && (
-                  <span className="text-3xs text-slate-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded-lg">
-                    {currentScreenshotIndex + 1} of {availableScreenshots.length} · Use <kbd className="font-mono text-purple-300">◄</kbd> <kbd className="font-mono text-purple-300">►</kbd> Arrow keys
+                <span className="text-3xs text-slate-400 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg flex items-center gap-2">
+                  <span>
+                    <kbd className="font-mono text-purple-300">▲</kbd> / <kbd className="font-mono text-purple-300">▼</kbd> Next/Prev Trade
                   </span>
-                )}
+                  <span>·</span>
+                  <span>
+                    <kbd className="font-mono text-purple-300">◄</kbd> / <kbd className="font-mono text-purple-300">►</kbd> Screenshots
+                  </span>
+                  {availableScreenshots.length > 1 && (
+                    <span>
+                      ({currentScreenshotIndex + 1} of {availableScreenshots.length})
+                    </span>
+                  )}
+                </span>
                 <a
                   href={activeScreenshot.image}
                   target="_blank"
@@ -847,35 +943,35 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
               </div>
             </div>
 
-            {/* Screenshots grid arranged strictly in requested order: LTF, HTF, 15m, 1hr, 4hr */}
+            {/* Screenshots grid arranged strictly from small to large: 1M, 5M, 15M, 1HR, 4HR */}
             <div className="grid gap-5 xl:grid-cols-2">
               <ScreenshotPanel
                 image={selectedTrade.ltfScreenshot}
-                timeframeTag="1. LTF"
-                label="Entry timeframe chart"
-                onOpen={() => openZoomForTimeframe('ltf')}
+                timeframeTag="1. 1M"
+                label="1 Minute entry chart"
+                onOpen={() => openZoomForTimeframe('1m')}
               />
               <ScreenshotPanel
                 image={selectedTrade.htfScreenshot}
-                timeframeTag="2. HTF"
-                label="High timeframe chart"
-                onOpen={() => openZoomForTimeframe('htf')}
+                timeframeTag="2. 5M"
+                label="5 Minute structure chart"
+                onOpen={() => openZoomForTimeframe('5m')}
               />
               <ScreenshotPanel
                 image={selectedTrade.fifteenMinuteScreenshot}
-                timeframeTag="3. 15m"
+                timeframeTag="3. 15M"
                 label="15 minute chart"
                 onOpen={() => openZoomForTimeframe('15m')}
               />
               <ScreenshotPanel
                 image={selectedTrade.oneHourScreenshot}
-                timeframeTag="4. 1hr"
+                timeframeTag="4. 1HR"
                 label="1 hour chart"
                 onOpen={() => openZoomForTimeframe('1hr')}
               />
               <ScreenshotPanel
                 image={selectedTrade.fourHourScreenshot}
-                timeframeTag="5. 4hr"
+                timeframeTag="5. 4HR"
                 label="4 hour chart"
                 onOpen={() => openZoomForTimeframe('4hr')}
               />

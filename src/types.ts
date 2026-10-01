@@ -103,11 +103,11 @@ export interface Trade {
   session: 'LONDON' | 'NEW YORK' | 'ASIA';
   mistakes: string[]; // e.g., "FOMO", "Overtrading", "Left Early", "None"
   notes: string;
-  htfScreenshot?: string; // High Timeframe Screenshot
-  ltfScreenshot?: string; // Low Timeframe Screenshot
-  fourHourScreenshot?: string; // 4-hour chart screenshot
-  oneHourScreenshot?: string; // 1-hour chart screenshot
-  fifteenMinuteScreenshot?: string; // 15-minute chart screenshot
+  ltfScreenshot?: string; // 1-minute chart screenshot (1M)
+  htfScreenshot?: string; // 5-minute chart screenshot (5M)
+  fifteenMinuteScreenshot?: string; // 15-minute chart screenshot (15M)
+  oneHourScreenshot?: string; // 1-hour chart screenshot (1HR)
+  fourHourScreenshot?: string; // 4-hour chart screenshot (4HR)
   tradeGrade?: TradeGrade; // Manual execution grade selected in the journal
   /** @deprecated Legacy generic checklist data retained for backup compatibility. */
   checklist?: Record<string, boolean>;

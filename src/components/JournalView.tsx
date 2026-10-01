@@ -114,8 +114,8 @@ const AVAILABLE_MISTAKES = [
 ];
 
 const MOCK_JOURNAL_SCREENSHOTS = [
-  { name: 'HTF Daily Supply Sweep', url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80' },
-  { name: 'LTF 15m entry trigger confirmation', url: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80' }
+  { name: '5M structure sweep', url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80' },
+  { name: '1M entry trigger confirmation', url: 'https://images.unsplash.com/photo-1642390091310-1ecf18553ca7?auto=format&fit=crop&w=600&q=80' }
 ];
 
 interface FloatingJournalWindowProps {
@@ -888,13 +888,13 @@ export default function JournalView({
     const headers = [
       'ID', 'AccountID', 'Date', 'Time', 'Asset', 'Setup', 'Setup ID', 'Direction', 'Entry', 'Exit', 'Size',
       'Stop Loss', 'Take Profit', 'Gross PnL', 'Commission', 'Swap', 'Other Fees', 'Total Fees',
-      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', 'HTF Screenshot', 'LTF Screenshot', '4HR Screenshot', '1HR Screenshot', '15M Screenshot'
+      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', '1M Screenshot', '5M Screenshot', '15M Screenshot', '1HR Screenshot', '4HR Screenshot'
     ];
     const rows = trades.map(t => [
       t.id, t.accountId, t.date, t.time, t.asset, t.setup, t.setupId || '', t.direction, t.entryPrice, t.exitPrice, t.size,
       t.sl, t.tp, t.pnl, t.commission ?? '', t.swap ?? '', t.fee ?? '', getTradeTotalFees(t),
       getTradeNetPnl(t), t.status, t.session, getTradeGrade(t) ?? '', t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
-      t.htfScreenshot || '', t.ltfScreenshot || '', t.fourHourScreenshot || '', t.oneHourScreenshot || '', t.fifteenMinuteScreenshot || ''
+      t.ltfScreenshot || '', t.htfScreenshot || '', t.fifteenMinuteScreenshot || '', t.oneHourScreenshot || '', t.fourHourScreenshot || ''
     ].map(escapeCSV).join(','));
 
     downloadFile(
@@ -1071,7 +1071,7 @@ export default function JournalView({
             Execution Journal Logs
           </h1>
           <p className="text-sm text-slate-500 font-sans">
-            Log exact entries, link HTF/LTF trading charts, and monitor individual accounts. Click any row to expand details.
+            Log exact entries, link multi-timeframe charts (1M to 4HR), and monitor individual accounts. Click any row to expand details.
           </p>
         </div>
 
@@ -1579,25 +1579,25 @@ export default function JournalView({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <ScreenshotUploader
-                label="High Timeframe Screenshot (HTF)"
-                value={htfScreenshot}
-                onChange={setHtfScreenshot}
-                onOpenLightbox={(url) => setActiveLightboxImg(url)}
-                badgeText="HTF Structure"
-              />
-              <ScreenshotUploader
-                label="Low Timeframe Screenshot (LTF)"
+                label="1 Minute Screenshot (1M)"
                 value={ltfScreenshot}
                 onChange={setLtfScreenshot}
                 onOpenLightbox={(url) => setActiveLightboxImg(url)}
-                badgeText="LTF Entry Trigger"
+                badgeText="1M Entry Trigger"
               />
               <ScreenshotUploader
-                label="4 Hour Screenshot (4HR)"
-                value={fourHourScreenshot}
-                onChange={setFourHourScreenshot}
+                label="5 Minute Screenshot (5M)"
+                value={htfScreenshot}
+                onChange={setHtfScreenshot}
                 onOpenLightbox={(url) => setActiveLightboxImg(url)}
-                badgeText="4HR Structure"
+                badgeText="5M Structure"
+              />
+              <ScreenshotUploader
+                label="15 Minute Screenshot (15M)"
+                value={fifteenMinuteScreenshot}
+                onChange={setFifteenMinuteScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="15M Execution"
               />
               <ScreenshotUploader
                 label="1 Hour Screenshot (1HR)"
@@ -1607,11 +1607,11 @@ export default function JournalView({
                 badgeText="1HR Context"
               />
               <ScreenshotUploader
-                label="15 Minute Screenshot (15M)"
-                value={fifteenMinuteScreenshot}
-                onChange={setFifteenMinuteScreenshot}
+                label="4 Hour Screenshot (4HR)"
+                value={fourHourScreenshot}
+                onChange={setFourHourScreenshot}
                 onOpenLightbox={(url) => setActiveLightboxImg(url)}
-                badgeText="15M Execution"
+                badgeText="4HR Structure"
               />
             </div>
 
@@ -1623,12 +1623,12 @@ export default function JournalView({
               <button
                 type="button"
                 onClick={() => {
-                  setHtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[0].url);
-                  setLtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[1].url);
+                  setLtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[0].url);
+                  setHtfScreenshot(MOCK_JOURNAL_SCREENSHOTS[1].url);
                 }}
                 className="px-2 py-0.5 border border-slate-200 rounded-md hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition font-bold cursor-pointer"
               >
-                Paste Mock HTF/LTF SS Links
+                Paste Mock 1M / 5M SS Links
               </button>
             </div>
           </div>
@@ -2291,14 +2291,14 @@ export default function JournalView({
                               </div>
 
                               {/* Saved chart screenshots */}
-                              {(trade.htfScreenshot || trade.ltfScreenshot || trade.fourHourScreenshot || trade.oneHourScreenshot || trade.fifteenMinuteScreenshot) ? (
+                              {(trade.ltfScreenshot || trade.htfScreenshot || trade.fifteenMinuteScreenshot || trade.oneHourScreenshot || trade.fourHourScreenshot) ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-1">
                                   {[
-                                    { image: trade.htfScreenshot, label: 'High Timeframe Structure (HTF SS)' },
-                                    { image: trade.ltfScreenshot, label: 'Low Timeframe Entry (LTF SS)' },
-                                    { image: trade.fourHourScreenshot, label: '4 Hour Structure (4HR SS)' },
-                                    { image: trade.oneHourScreenshot, label: '1 Hour Context (1HR SS)' },
+                                    { image: trade.ltfScreenshot, label: '1 Minute Entry (1M SS)' },
+                                    { image: trade.htfScreenshot, label: '5 Minute Structure (5M SS)' },
                                     { image: trade.fifteenMinuteScreenshot, label: '15 Minute Execution (15M SS)' },
+                                    { image: trade.oneHourScreenshot, label: '1 Hour Context (1HR SS)' },
+                                    { image: trade.fourHourScreenshot, label: '4 Hour Structure (4HR SS)' },
                                   ].filter(item => Boolean(item.image)).map(item => (
                                     <div key={item.label} className="space-y-2">
                                       <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1">
