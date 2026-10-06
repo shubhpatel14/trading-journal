@@ -10,7 +10,7 @@ from firebase_admin import credentials, firestore
 # ============================================================
 
 USER_UID = "bu8j28sFuSOqssYhCR9uNamFox92" # change this user id 
-ACCOUNT_ID = "acc-1784784270970" # change this acc id for different account
+ACCOUNT_ID = "acc-1791288147151" # change this acc id for different account
 
 # ============================================================
 # FIREBASE INITIALIZATION
