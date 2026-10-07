@@ -17,22 +17,51 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 USER_UID = "bu8j28sFuSOqssYhCR9uNamFox92"
-ACCOUNT_ID = "acc-1784784270970"
+DEFAULT_ACCOUNT_ID = "acc-1784784270970"
 
-# Save / update account details in Firestore
-db.collection("users") \
-  .document(USER_UID) \
-  .collection("accounts") \
-  .document(ACCOUNT_ID) \
-  .set({
-      "id": ACCOUNT_ID,
-      "name": "MT5",
-      "broker": "BLUEBERRY",
-      "currency": "USD",
-      "initialBalance": 5000,
-      "isActive": True
-  }, merge=True)
-print(f"Registered account {ACCOUNT_ID} (BLUEBERRY - MT5)")
+def resolve_target_account(db_client, user_uid: str, fallback_acc_id: str):
+    """
+    Dynamically finds the target MT5 account in Firestore:
+    1. Looks for any account under users/{USER_UID}/accounts where isPrimary == True.
+    2. If found, uses that account ID and preserves its custom name.
+    3. If none is marked isPrimary, falls back to fallback_acc_id.
+    """
+    accounts_ref = db_client.collection("users").document(user_uid).collection("accounts")
+    try:
+        primary_docs = list(accounts_ref.where("isPrimary", "==", True).limit(1).stream())
+        if primary_docs:
+            p_doc = primary_docs[0]
+            p_data = p_doc.to_dict() or {}
+            p_id = p_doc.id
+            p_name = p_data.get("name", "MT5")
+            p_broker = p_data.get("broker", "BLUEBERRY")
+            print(f"[INFO] Primary MT5 Account detected: '{p_name}' ({p_id}) [{p_broker}]")
+            return p_id, p_name, p_doc.reference
+    except Exception as e:
+        print(f"[WARNING] Could not query primary account: {e}")
+
+    fallback_ref = accounts_ref.document(fallback_acc_id)
+    doc_snap = fallback_ref.get()
+    if doc_snap.exists:
+        data = doc_snap.to_dict() or {}
+        name = data.get("name", "MT5")
+        fallback_ref.set({"isActive": True, "isPrimary": True}, merge=True)
+        print(f"[INFO] Using configured account: '{name}' ({fallback_acc_id})")
+        return fallback_acc_id, name, fallback_ref
+
+    fallback_ref.set({
+        "id": fallback_acc_id,
+        "name": "MT5",
+        "broker": "BLUEBERRY",
+        "currency": "USD",
+        "initialBalance": 5000,
+        "isActive": True,
+        "isPrimary": True
+    }, merge=True)
+    return fallback_acc_id, "MT5", fallback_ref
+
+ACCOUNT_ID, ACCOUNT_NAME, account_ref = resolve_target_account(db, USER_UID, DEFAULT_ACCOUNT_ID)
+print(f"Target Sync Account: {ACCOUNT_NAME} ({ACCOUNT_ID})")
 
 # ============================================================
 # MT5

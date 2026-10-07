@@ -6,6 +6,9 @@ export interface TradingAccount {
   currency: string;
   commissionPerLot?: number; // Fee structure per lot ($/lot, e.g. 7.00)
   isActive?: boolean;
+  isPrimary?: boolean;
+  lastSync?: string;
+  primarySetAt?: string;
 }
 
 export interface TimeframeAnalysis {

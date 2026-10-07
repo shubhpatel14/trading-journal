@@ -25,7 +25,10 @@ import {
   ListChecks,
   Coins,
   Heart,
-  Brain
+  Brain,
+  Edit2,
+  Star,
+  CheckCircle2
 } from 'lucide-react';
 import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, SetupDefinition } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_SETUP_DEFINITIONS } from './mockData';
@@ -132,6 +135,13 @@ const isTradeJournalComplete = (trade: Partial<Trade>) => (
   trade.journalingStatus === 'COMPLETE' ||
   Boolean(getTradeGrade(trade))
 );
+
+export const isDemoTrade = (trade: Partial<Trade> | null | undefined): boolean => {
+  if (!trade || !trade.id) return false;
+  if (/^trade-[1-9]$/.test(trade.id)) return true;
+  if (['trade-1', 'trade-2', 'trade-3', 'trade-4', 'trade-5', 'trade-6', 'trade-7', 'trade-8', 'trade-9'].includes(trade.id)) return true;
+  return false;
+};
 
 const normalizeFirestoreTrade = (trade: Trade): Trade => ({
   ...trade,
@@ -242,6 +252,17 @@ export default function App() {
   const [newAccBalance, setNewAccBalance] = useState('100000');
   const [newAccCurrency, setNewAccCurrency] = useState('USD');
   const [newAccCommission, setNewAccCommission] = useState('7.00');
+  const [newAccIsPrimary, setNewAccIsPrimary] = useState(false);
+
+  // Edit account state
+  const [editingAccount, setEditingAccount] = useState<TradingAccount | null>(null);
+  const [editAccName, setEditAccName] = useState('');
+  const [editAccBroker, setEditAccBroker] = useState('');
+  const [editAccBalance, setEditAccBalance] = useState('100000');
+  const [editAccCurrency, setEditAccCurrency] = useState('USD');
+  const [editAccCommission, setEditAccCommission] = useState('7.00');
+  const [editAccIsPrimary, setEditAccIsPrimary] = useState(false);
+  const [editSyncFromNow, setEditSyncFromNow] = useState(true);
 
   // Trades State
   const [trades, setTrades] = useState<Trade[]>(() => {
@@ -798,10 +819,20 @@ export default function App() {
 
       const tradeMap = new Map<string, Trade>();
       normalizedLoadedTrades.forEach(t => {
+        if (!isDemoUser && isDemoTrade(t)) {
+          // Clean demo trade from real user Firestore
+          batch.delete(doc(db, 'users', userId, 'trades', t.id));
+          needsBatchCommit = true;
+          return;
+        }
         tradeMap.set(t.id, t);
       });
 
       localTrades.forEach(localT => {
+        if (!isDemoUser && isDemoTrade(localT)) {
+          // Never upload demo trades into real user Firestore
+          return;
+        }
         const remoteT = tradeMap.get(localT.id);
         if (!remoteT) {
           tradeMap.set(localT.id, localT);
@@ -1432,16 +1463,28 @@ export default function App() {
     e.preventDefault();
     if (!newAccName.trim()) return;
 
+    const newAccId = `acc-${Date.now()}`;
+    const isPrimary = newAccIsPrimary || accounts.length === 0;
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const isoNow = new Date().toISOString();
+
     const newAcc: TradingAccount = {
-      id: `acc-${Date.now()}`,
-      name: newAccName,
-      broker: newAccBroker || 'Unknown Broker',
+      id: newAccId,
+      name: newAccName.trim(),
+      broker: newAccBroker.trim() || 'Custom Broker',
       initialBalance: parseFloat(newAccBalance) || 0,
       currency: newAccCurrency || 'USD',
-      commissionPerLot: parseFloat(newAccCommission) || 7
+      commissionPerLot: parseFloat(newAccCommission) || 7,
+      isPrimary,
+      ...(isPrimary ? { lastSync: nowStr, primarySetAt: isoNow } : {})
     };
 
-    setAccounts(prev => [...prev, newAcc]);
+    setAccounts(prev => {
+      if (isPrimary) {
+        return [...prev.map(a => ({ ...a, isPrimary: false })), newAcc];
+      }
+      return [...prev, newAcc];
+    });
     setSelectedAccountId(newAcc.id);
 
     // Reset Form
@@ -1450,13 +1493,131 @@ export default function App() {
     setNewAccBalance('100000');
     setNewAccCurrency('USD');
     setNewAccCommission('7.00');
+    setNewAccIsPrimary(false);
 
     if (user && db && !isDemoUser) {
       setIsCloudSyncing(true);
       try {
-        await setDoc(doc(db, 'users', user.uid, 'accounts', newAcc.id), newAcc);
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid, 'accounts', newAcc.id), cleanForFirestore(newAcc));
+        if (isPrimary) {
+          accounts.forEach(a => {
+            if (a.isPrimary) {
+              batch.set(doc(db, 'users', user.uid, 'accounts', a.id), { isPrimary: false }, { merge: true });
+            }
+          });
+        }
+        await batch.commit();
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}/accounts/${newAcc.id}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
+  };
+
+  const handleStartEditAccount = (acc: TradingAccount) => {
+    setEditingAccount(acc);
+    setEditAccName(acc.name);
+    setEditAccBroker(acc.broker);
+    setEditAccBalance(String(acc.initialBalance));
+    setEditAccCurrency(acc.currency || 'USD');
+    setEditAccCommission(String(acc.commissionPerLot !== undefined ? acc.commissionPerLot : 7));
+    setEditAccIsPrimary(Boolean(acc.isPrimary));
+    setEditSyncFromNow(true);
+  };
+
+  const handleSaveEditAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAccount || !editAccName.trim()) return;
+
+    const targetId = editingAccount.id;
+    const isNowPrimary = editAccIsPrimary;
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const isoNow = new Date().toISOString();
+
+    const updatedAccount: TradingAccount = {
+      ...editingAccount,
+      name: editAccName.trim(),
+      broker: editAccBroker.trim() || 'Custom Broker',
+      initialBalance: parseFloat(editAccBalance) || 0,
+      currency: editAccCurrency || 'USD',
+      commissionPerLot: parseFloat(editAccCommission) || 7,
+      isPrimary: isNowPrimary,
+    };
+
+    if (isNowPrimary && editSyncFromNow) {
+      updatedAccount.lastSync = nowStr;
+      updatedAccount.primarySetAt = isoNow;
+    }
+
+    setAccounts(prev => {
+      return prev.map(a => {
+        if (a.id === targetId) {
+          return updatedAccount;
+        }
+        if (isNowPrimary) {
+          return { ...a, isPrimary: false };
+        }
+        return a;
+      });
+    });
+
+    setEditingAccount(null);
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid, 'accounts', targetId), cleanForFirestore(updatedAccount), { merge: true });
+        if (isNowPrimary) {
+          accounts.forEach(a => {
+            if (a.id !== targetId && a.isPrimary) {
+              batch.set(doc(db, 'users', user.uid, 'accounts', a.id), { isPrimary: false }, { merge: true });
+            }
+          });
+        }
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/accounts/${targetId}`);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
+  };
+
+  const handleSetPrimaryAccount = async (accId: string) => {
+    const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const isoNow = new Date().toISOString();
+
+    setAccounts(prev => {
+      return prev.map(a => {
+        if (a.id === accId) {
+          return { ...a, isPrimary: true, lastSync: nowStr, primarySetAt: isoNow };
+        }
+        return { ...a, isPrimary: false };
+      });
+    });
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'users', user.uid, 'accounts', accId), {
+          isPrimary: true,
+          lastSync: nowStr,
+          primarySetAt: isoNow
+        }, { merge: true });
+
+        accounts.forEach(a => {
+          if (a.id !== accId && a.isPrimary) {
+            batch.set(doc(db, 'users', user.uid, 'accounts', a.id), { isPrimary: false }, { merge: true });
+          }
+        });
+
+        await batch.commit();
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/accounts/${accId}`);
       } finally {
         setIsCloudSyncing(false);
       }
@@ -1497,17 +1658,27 @@ export default function App() {
     }
   };
 
-  // Filter trades dynamically by active account
+  // Filter trades dynamically by active account, removing demo trades in consolidated mode
   const activeAccount = accounts.find(a => a.id === selectedAccountId);
 
   const filteredTrades = trades.filter(t => {
-    if (selectedAccountId === 'ALL') return true;
-    return t.accountId === selectedAccountId;
+    // In Consolidated Views ('ALL'), ALWAYS remove demo trades!
+    if (selectedAccountId === 'ALL') {
+      if (isDemoTrade(t)) return false;
+      return true;
+    }
+    // Individual account view:
+    if (t.accountId !== selectedAccountId) return false;
+    // If authenticated user, also exclude demo trades from individual account views
+    if (!isDemoUser && isDemoTrade(t)) return false;
+    return true;
   });
 
-  // Calculate account stats or defaults
+  // Calculate account stats or defaults (exclude demo mock accounts if real accounts exist in consolidated view)
   const totalAccountInitialBalance = selectedAccountId === 'ALL'
-    ? accounts.reduce((sum, a) => sum + a.initialBalance, 0)
+    ? accounts
+        .filter(a => isDemoUser || (!['acc-1', 'acc-2', 'acc-3'].includes(a.id) || accounts.length <= 3))
+        .reduce((sum, a) => sum + a.initialBalance, 0)
     : activeAccount?.initialBalance || 100000;
 
   const currentAccountCurrency = selectedAccountId === 'ALL'
@@ -1563,17 +1734,32 @@ export default function App() {
                   onChange={(e) => setSelectedAccountId(e.target.value)}
                   className="text-2xs font-bold text-clay-foreground bg-transparent border-none focus:outline-none cursor-pointer font-sans w-full sm:max-w-[280px] md:max-w-[320px] truncate"
                 >
-                  <option value="ALL">Consolidated Views (All Accounts)</option>
+                  <option value="ALL">Consolidated Portfolio (All Accounts)</option>
                   {accounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
-                      {acc.name} — {acc.broker} ({acc.currency})
+                      {acc.isPrimary ? '★ ' : ''}{acc.name} — {acc.broker} ({acc.currency}){acc.isPrimary ? ' [Primary MT5]' : ''}
                     </option>
                   ))}
                 </select>
+                {selectedAccountId !== 'ALL' && activeAccount && (
+                  <button
+                    onClick={() => {
+                      handleStartEditAccount(activeAccount);
+                      setShowAccountModal(true);
+                    }}
+                    className="rounded-full p-1 text-clay-muted hover:bg-white hover:text-blue-600 transition cursor-pointer shrink-0"
+                    title={`Edit Account Name (${activeAccount.name})`}
+                  >
+                    <Edit2 size={12} />
+                  </button>
+                )}
                 <button
-                  onClick={() => setShowAccountModal(true)}
+                  onClick={() => {
+                    setEditingAccount(null);
+                    setShowAccountModal(true);
+                  }}
                   className="rounded-full p-1.5 text-clay-muted hover:bg-white hover:text-clay-accent transition cursor-pointer shrink-0"
-                  title="Configure Accounts"
+                  title="Manage Accounts & MT5 Sync"
                 >
                   <Settings size={13} />
                 </button>
@@ -1724,191 +1910,384 @@ export default function App() {
 
       {/* Account Switcher / Management Modal */}
       {showAccountModal && (
-        <div className="fixed inset-0 bg-[#332F3A]/35 z-50 flex items-center justify-center p-4">
-          <div className="clay-surface max-w-xl w-full p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-[#332F3A]/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="clay-surface max-w-xl w-full p-6 space-y-5 animate-scaleUp max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200/90">
 
             <div className="flex justify-between items-center pb-3 border-b border-slate-150">
               <div className="space-y-0.5">
-                <h3 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                   <Database size={18} className="text-blue-600" />
-                  Trading Accounts Manager
+                  Trading Accounts & MT5 Sync Manager
                 </h3>
-                <p className="text-3xs text-slate-400 font-sans">
-                  Monitor distinct balances and metrics. Create evaluation or live accounts below.
+                <p className="text-3xs text-slate-500 font-sans">
+                  Set your Primary MT5 Sync account, edit account names, or provision new evaluation and live portfolios.
                 </p>
               </div>
               <button
-                onClick={() => setShowAccountModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600 transition"
+                onClick={() => {
+                  setEditingAccount(null);
+                  setShowAccountModal(false);
+                }}
+                className="p-1.5 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600 transition cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
 
-            {/* List of existing accounts */}
-            <div className="space-y-2">
-              <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">Active Portfolio Accounts & Fee Structure</span>
-              <div className="max-h-[210px] overflow-y-auto space-y-2 pr-1">
-                {accounts.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
-                    No trading accounts provisioned yet. Use the form below to add your account.
+            {/* If in Edit Mode for an Account */}
+            {editingAccount ? (
+              <form onSubmit={handleSaveEditAccount} className="p-4 bg-blue-50/40 border border-blue-200/80 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                    <Edit2 size={14} className="text-blue-600" />
+                    <span>Edit Account: {editingAccount.name}</span>
                   </div>
-                ) : (
-                  accounts.map(acc => {
-                  const accTrades = trades.filter(t => t.accountId === acc.id);
-                  const accNetPnl = accTrades.reduce((sum, t) => sum + getTradeNetPnl(t, acc.commissionPerLot ?? 7), 0);
-                  const isSelected = selectedAccountId === acc.id;
-
-                  return (
-                    <div
-                      key={acc.id}
-                      className={`p-3 rounded-xl border space-y-2 transition ${isSelected
-                        ? 'bg-blue-50/40 border-blue-200'
-                        : 'bg-slate-50/50 border-slate-150'
-                        }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <strong className="text-slate-800 text-xs">{acc.name}</strong>
-                            <span className="text-4xs bg-slate-200/80 px-1 py-0.5 rounded text-slate-500 font-bold uppercase">{acc.broker}</span>
-                          </div>
-                          <div className="text-3xs text-slate-500 font-mono">
-                            Start: ${acc.initialBalance.toLocaleString()} ({acc.currency}) • Net P&L:{' '}
-                            <span className={accNetPnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
-                              {accNetPnl >= 0 ? '+' : ''}${accNetPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => setSelectedAccountId(acc.id)}
-                            className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-md transition cursor-pointer ${isSelected
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
-                              }`}
-                          >
-                            {isSelected ? 'Active' : 'Select'}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteAccount(acc.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
-                            title="Delete Account and linked trades"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Fee Structure Per Lot Setting */}
-                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 text-2xs">
-                        <span className="text-slate-500 font-semibold flex items-center gap-1">
-                          <Coins size={12} className="text-amber-600" />
-                          Fee Structure per Lot:
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span className="text-slate-400 font-mono text-xs">$</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={acc.commissionPerLot !== undefined ? acc.commissionPerLot : 7}
-                            onChange={(e) => handleUpdateAccountCommission(acc.id, parseFloat(e.target.value) || 0)}
-                            className="w-16 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            title="Edit trading commission charged per standard lot ($/lot)"
-                          />
-                          <span className="text-3xs text-slate-400 font-mono">/ lot</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              </div>
-            </div>
-
-            {/* Create New Account form */}
-            <form onSubmit={handleCreateAccount} className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3.5">
-              <span className="text-3xs text-slate-500 font-bold uppercase tracking-wider block">Provision New Trading Account</span>
-              <div className="grid grid-cols-2 gap-3 text-2xs">
-                <div className="space-y-1">
-                  <label className="text-slate-500 font-bold">Account Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. $100k FTMO Challenge"
-                    value={newAccName}
-                    onChange={(e) => setNewAccName(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <span className="text-4xs font-mono text-slate-400">ID: {editingAccount.id}</span>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-slate-500 font-bold">Broker / Provider</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Funding Pips, BlueBerry"
-                    value={newAccBroker}
-                    onChange={(e) => setNewAccBroker(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-slate-500 font-bold">Initial Balance</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="100000"
-                    value={newAccBalance}
-                    onChange={(e) => setNewAccBalance(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-slate-500 font-bold">Base Currency</label>
-                  <select
-                    value={newAccCurrency}
-                    onChange={(e) => setNewAccCurrency(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                    <option value="USDT">USDT</option>
-                  </select>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <label className="text-slate-500 font-bold flex items-center justify-between">
-                    <span>Commission Fee Structure</span>
-                    <span className="text-[10px] text-amber-700 font-mono">($ / standard lot)</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1.5 text-xs text-slate-400 font-mono">$</span>
+
+                <div className="grid grid-cols-2 gap-3 text-2xs">
+                  <div className="space-y-1 col-span-2 sm:col-span-1">
+                    <label className="text-slate-600 font-bold">Account Name</label>
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       required
-                      placeholder="7.00"
-                      value={newAccCommission}
-                      onChange={(e) => setNewAccCommission(e.target.value)}
-                      className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="e.g. Blueberry Funded $100k"
+                      value={editAccName}
+                      onChange={(e) => setEditAccName(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+
+                  <div className="space-y-1 col-span-2 sm:col-span-1">
+                    <label className="text-slate-600 font-bold">Broker / Provider</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. BlueBerry, Funding Pips, FTMO"
+                      value={editAccBroker}
+                      onChange={(e) => setEditAccBroker(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-600 font-bold">Initial Balance</label>
+                    <input
+                      type="number"
+                      required
+                      placeholder="100000"
+                      value={editAccBalance}
+                      onChange={(e) => setEditAccBalance(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-600 font-bold">Base Currency</label>
+                    <select
+                      value={editAccCurrency}
+                      onChange={(e) => setEditAccCurrency(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                      <option value="USDT">USDT</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-slate-600 font-bold flex items-center justify-between">
+                      <span>Commission Fee Structure ($ / lot)</span>
+                      <span className="text-3xs text-amber-700 font-mono">Charged per standard lot</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1.5 text-xs text-slate-400 font-mono">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={editAccCommission}
+                        onChange={(e) => setEditAccCommission(e.target.value)}
+                        className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Primary Account Checkbox */}
+                  <div className="col-span-2 p-3 bg-white/80 border border-emerald-200/80 rounded-xl space-y-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editAccIsPrimary}
+                        onChange={(e) => setEditAccIsPrimary(e.target.checked)}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Sparkles size={13} className="text-emerald-500 fill-emerald-500" />
+                        Set as Primary MT5 Sync Account
+                      </span>
+                    </label>
+                    <p className="text-3xs text-slate-500 pl-6">
+                      When MT5 sync runs, all trades are automatically attributed to this account from this point forward and count towards its balance and performance metrics.
+                    </p>
+                    {editAccIsPrimary && (
+                      <label className="flex items-center gap-2 pl-6 pt-1 text-3xs text-slate-600 cursor-pointer font-medium">
+                        <input
+                          type="checkbox"
+                          checked={editSyncFromNow}
+                          onChange={(e) => setEditSyncFromNow(e.target.checked)}
+                          className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300"
+                        />
+                        <span>Sync MT5 trades from this point in time forward (recommended)</span>
+                      </label>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer"
-              >
-                Create and Switch Account
-              </button>
-            </form>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingAccount(null)}
+                    className="px-3.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 size={13} />
+                    Save Account Changes
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                {/* List of existing accounts */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-3xs text-slate-400 font-bold uppercase tracking-wider block">
+                      Portfolio Accounts & MT5 Sync Target
+                    </span>
+                    <span className="text-3xs text-slate-400 font-mono">{accounts.length} Accounts</span>
+                  </div>
 
-            <div className="flex justify-end pt-2">
+                  <div className="max-h-[240px] overflow-y-auto space-y-2 pr-1">
+                    {accounts.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                        No trading accounts configured yet. Use the form below to add your account.
+                      </div>
+                    ) : (
+                      accounts.map(acc => {
+                        const accTrades = trades.filter(t => t.accountId === acc.id && (!isDemoTrade(t) || isDemoUser));
+                        const accNetPnl = accTrades.reduce((sum, t) => sum + getTradeNetPnl(t, acc.commissionPerLot ?? 7), 0);
+                        const isSelected = selectedAccountId === acc.id;
+                        const isPrimary = Boolean(acc.isPrimary);
+
+                        return (
+                          <div
+                            key={acc.id}
+                            className={`p-3 rounded-2xl border space-y-2 transition ${isSelected
+                              ? 'bg-blue-50/50 border-blue-300/80 shadow-xs'
+                              : isPrimary
+                                ? 'bg-emerald-50/30 border-emerald-200/70'
+                                : 'bg-slate-50/60 border-slate-200/70'
+                              }`}
+                          >
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="space-y-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <strong className="text-slate-800 text-xs truncate">{acc.name}</strong>
+                                  <span className="text-4xs bg-slate-200/80 px-1.5 py-0.5 rounded-full text-slate-600 font-bold uppercase">
+                                    {acc.broker}
+                                  </span>
+                                  {isPrimary && (
+                                    <span className="text-4xs bg-emerald-100 text-emerald-800 border border-emerald-300/70 px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1 shadow-2xs">
+                                      <Star size={9} className="fill-emerald-600 text-emerald-600" />
+                                      Primary MT5 Sync
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-3xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
+                                  <span>Start: ${acc.initialBalance.toLocaleString()} ({acc.currency})</span>
+                                  <span>•</span>
+                                  <span>{accTrades.length} trades</span>
+                                  <span>•</span>
+                                  <span>Net P&L:{' '}
+                                    <span className={accNetPnl >= 0 ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>
+                                      {accNetPnl >= 0 ? '+' : ''}${accNetPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {!isPrimary && (
+                                  <button
+                                    onClick={() => handleSetPrimaryAccount(acc.id)}
+                                    className="px-2 py-1 text-4xs font-bold text-slate-600 hover:text-emerald-700 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-lg transition cursor-pointer flex items-center gap-1"
+                                    title="Set this account as the primary target for MT5 trade synchronization"
+                                  >
+                                    <Star size={10} className="text-amber-500" />
+                                    Make Primary
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleStartEditAccount(acc)}
+                                  className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200/60 rounded-lg transition cursor-pointer"
+                                  title="Edit Account Name, Broker, Balance, and Settings"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                                <button
+                                  onClick={() => setSelectedAccountId(acc.id)}
+                                  className={`px-2 py-1 text-3xs font-extrabold tracking-wider uppercase rounded-lg transition cursor-pointer ${isSelected
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'bg-white hover:bg-slate-100 border border-slate-200 text-slate-600'
+                                    }`}
+                                >
+                                  {isSelected ? 'Active' : 'Select'}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAccount(acc.id)}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                                  title="Delete Account and linked trades"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Fee Structure Per Lot Setting */}
+                            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 text-2xs">
+                              <span className="text-slate-500 font-semibold flex items-center gap-1">
+                                <Coins size={12} className="text-amber-600" />
+                                Fee Structure per Lot:
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-400 font-mono text-xs">$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={acc.commissionPerLot !== undefined ? acc.commissionPerLot : 7}
+                                  onChange={(e) => handleUpdateAccountCommission(acc.id, parseFloat(e.target.value) || 0)}
+                                  className="w-16 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                  title="Edit trading commission charged per standard lot ($/lot)"
+                                />
+                                <span className="text-3xs text-slate-400 font-mono">/ lot</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Create New Account form */}
+                <form onSubmit={handleCreateAccount} className="p-4 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
+                  <span className="text-3xs text-slate-500 font-bold uppercase tracking-wider block">Provision New Trading Account</span>
+                  <div className="grid grid-cols-2 gap-3 text-2xs">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-bold">Account Name</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Blueberry Live Account"
+                        value={newAccName}
+                        onChange={(e) => setNewAccName(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-bold">Broker / Provider</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Funding Pips, BlueBerry"
+                        value={newAccBroker}
+                        onChange={(e) => setNewAccBroker(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-bold">Initial Balance</label>
+                      <input
+                        type="number"
+                        required
+                        placeholder="100000"
+                        value={newAccBalance}
+                        onChange={(e) => setNewAccBalance(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-bold">Base Currency</label>
+                      <select
+                        value={newAccCurrency}
+                        onChange={(e) => setNewAccCurrency(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                      >
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                        <option value="USDT">USDT</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <label className="text-slate-600 font-bold flex items-center justify-between">
+                        <span>Commission Fee Structure</span>
+                        <span className="text-[10px] text-amber-700 font-mono">($ / standard lot)</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1.5 text-xs text-slate-400 font-mono">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          placeholder="7.00"
+                          value={newAccCommission}
+                          onChange={(e) => setNewAccCommission(e.target.value)}
+                          className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newAccIsPrimary}
+                          onChange={(e) => setNewAccIsPrimary(e.target.checked)}
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                        />
+                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <Sparkles size={12} className="text-emerald-500 fill-emerald-500" />
+                          Set as Primary MT5 Sync Account (All MT5 trades will sync here)
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer"
+                  >
+                    Create and Switch Account
+                  </button>
+                </form>
+              </>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-slate-150">
               <button
-                onClick={() => setShowAccountModal(false)}
-                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-lg transition"
+                onClick={() => {
+                  setEditingAccount(null);
+                  setShowAccountModal(false);
+                }}
+                className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
                 Close Manager
               </button>

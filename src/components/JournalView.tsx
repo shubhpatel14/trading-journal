@@ -395,7 +395,9 @@ export default function JournalView({
 
   // Form State
   const [accountId, setAccountId] = useState(() => {
-    return selectedAccountId !== 'ALL' ? selectedAccountId : accounts[0]?.id || 'acc-1';
+    if (selectedAccountId !== 'ALL') return selectedAccountId;
+    const primary = accounts.find(a => a.isPrimary);
+    return primary?.id || accounts[0]?.id || 'acc-1';
   });
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -522,7 +524,8 @@ export default function JournalView({
     if (selectedAccountId !== 'ALL') {
       setAccountId(selectedAccountId);
     } else if (accounts.length > 0) {
-      setAccountId(accounts[0].id);
+      const primary = accounts.find(a => a.isPrimary);
+      setAccountId(primary?.id || accounts[0].id);
     }
   }, [selectedAccountId, accounts]);
 
@@ -624,7 +627,8 @@ export default function JournalView({
     if (selectedAccountId !== 'ALL') {
       setAccountId(selectedAccountId);
     } else if (accounts.length > 0) {
-      setAccountId(accounts[0].id);
+      const primary = accounts.find(a => a.isPrimary);
+      setAccountId(primary?.id || accounts[0].id);
     }
     setShowForm(true);
   };
@@ -1206,7 +1210,9 @@ export default function JournalView({
                 required
               >
                 {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.currency})</option>
+                  <option key={acc.id} value={acc.id}>
+                    {acc.isPrimary ? '★ ' : ''}{acc.name} ({acc.currency}){acc.isPrimary ? ' [Primary MT5]' : ''}
+                  </option>
                 ))}
               </select>
             </div>

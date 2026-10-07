@@ -32,27 +32,48 @@ except ValueError:
 
 db = firestore.client()
 
-# Reference to the account document in Firestore: users/{USER_UID}/accounts/{ACCOUNT_ID}
-account_ref = db.collection("users") \
-  .document(USER_UID) \
-  .collection("accounts") \
-  .document(ACCOUNT_ID)
+def resolve_target_account(db_client, user_uid: str, fallback_acc_id: str):
+    """
+    Dynamically finds the target MT5 account in Firestore:
+    1. Looks for any account under users/{USER_UID}/accounts where isPrimary == True.
+    2. If found, uses that account ID and preserves its custom name (does not overwrite with 'MT5').
+    3. If no account has isPrimary == True, uses fallback_acc_id.
+    4. Never overwrites user-edited account names or balances.
+    """
+    accounts_ref = db_client.collection("users").document(user_uid).collection("accounts")
+    try:
+        primary_docs = list(accounts_ref.where("isPrimary", "==", True).limit(1).stream())
+        if primary_docs:
+            p_doc = primary_docs[0]
+            p_data = p_doc.to_dict() or {}
+            p_id = p_doc.id
+            p_name = p_data.get("name", "MT5")
+            p_broker = p_data.get("broker", "BLUEBERRY")
+            print(f"[INFO] Primary MT5 Account detected from Journal: '{p_name}' ({p_id}) [{p_broker}]")
+            return p_id, p_name, p_doc.reference
+    except Exception as e:
+        print(f"[WARNING] Could not query primary accounts: {e}")
 
-# Register / Update Account Document (preserves existing properties)
-account_ref.set({
-    "id": ACCOUNT_ID,
-    "name": "MT5",
-    "broker": "BLUEBERRY",
-    "currency": "USD",
-    "initialBalance": 5000,
-    "isActive": True
-}, merge=True)
+    fallback_ref = accounts_ref.document(fallback_acc_id)
+    doc_snap = fallback_ref.get()
+    if doc_snap.exists:
+        data = doc_snap.to_dict() or {}
+        name = data.get("name", "MT5")
+        fallback_ref.set({"isActive": True, "isPrimary": True}, merge=True)
+        print(f"[INFO] Using configured account: '{name}' ({fallback_acc_id})")
+        return fallback_acc_id, name, fallback_ref
 
-print("=" * 60)
-print("              MT5 AUTO SYNC (INCREMENTAL)")
-print(f"Account : {ACCOUNT_ID}")
-print("Broker  : BLUEBERRY")
-print("=" * 60)
+    print(f"[INFO] Initializing new MT5 account document for {fallback_acc_id}...")
+    fallback_ref.set({
+        "id": fallback_acc_id,
+        "name": "MT5",
+        "broker": "BLUEBERRY",
+        "currency": "USD",
+        "initialBalance": 5000,
+        "isActive": True,
+        "isPrimary": True
+    }, merge=True)
+    return fallback_acc_id, "MT5", fallback_ref
 
 
 # ============================================================
@@ -80,7 +101,7 @@ def get_last_sync_timestamp(account_doc_ref) -> datetime:
         if not data or "lastSync" not in data:
             return None
 
-        raw_val = data["lastSync"]
+        raw_val = data.get("lastSync") or data.get("primarySetAt")
         if raw_val is None:
             return None
 
@@ -131,17 +152,25 @@ def run_sync():
     """
     Main sync logic:
     1. Checks for MT5 connection.
-    2. Reads lastSync timestamp from Firestore:
+    2. Resolves primary target account dynamically from Firestore.
+    3. Reads lastSync timestamp from Firestore:
        - First run (no lastSync): Downloads full trade history.
        - Subsequent run: Fetches only deals newer than lastSync (with 1-day safety margin & future upper bound).
-    3. Handles partial closes & multiple deals by fetching position deal history.
-    4. Upserts trades into Firestore (users/{USER_UID}/trades/{positionId}).
-    5. Updates lastSync timestamp in Firestore after sync completion.
+    4. Handles partial closes & multiple deals by fetching position deal history.
+    5. Upserts trades into Firestore under active primary account.
+    6. Updates lastSync timestamp in Firestore after sync completion.
     """
     sync_start = datetime.now()
     now_str = sync_start.strftime("%Y-%m-%d %H:%M:%S")
-    # Upper bound set 2 days in future so MT5 Server Time (~3h ahead of local clock) never gets cut off
     to_date = sync_start + timedelta(days=2)
+
+    # Dynamically resolve target account (picks primary account configured in TradeForge app)
+    target_acc_id, target_acc_name, target_acc_ref = resolve_target_account(db, USER_UID, ACCOUNT_ID)
+
+    print("=" * 60)
+    print("              MT5 AUTO SYNC (INCREMENTAL)")
+    print(f"Target Account: {target_acc_name} ({target_acc_id})")
+    print("=" * 60)
 
     # Edge Case 1: MT5 Connection Failure
     if not mt5.initialize():
@@ -149,7 +178,7 @@ def run_sync():
         return
 
     # Edge Case 2: First Run vs Subsequent Runs (Check lastSync in Firebase)
-    last_sync_dt = get_last_sync_timestamp(account_ref)
+    last_sync_dt = get_last_sync_timestamp(target_acc_ref)
 
     if last_sync_dt is None:
         print(f"[{now_str}] [INFO] First run detected: Fetching complete MT5 trade history...")
@@ -243,7 +272,7 @@ def run_sync():
         # when the trade is first created so auto-sync cannot erase notes/images.
         trade = {
             "id": str(pos_id),
-            "accountId": ACCOUNT_ID,
+            "accountId": target_acc_id,
             "positionId": pos_id,
             "asset": first_open.symbol.replace(".pi", "")
             if getattr(first_open, "symbol", None)
@@ -287,7 +316,7 @@ def run_sync():
     mt5.shutdown()
 
     # Requirement 10: Update lastSync timestamp in Firebase after successful sync
-    update_last_sync_timestamp(account_ref, sync_start)
+    update_last_sync_timestamp(target_acc_ref, sync_start)
 
     print("\n" + "=" * 60)
     print("SYNC COMPLETED")
