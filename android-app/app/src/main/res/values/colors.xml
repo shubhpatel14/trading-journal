@@ -1,0 +1,8 @@
+<resources>
+    <color name="clay_canvas">#F4F1FA</color>
+    <color name="clay_foreground">#332F3A</color>
+    <color name="clay_accent">#7C3AED</color>
+    <color name="clay_success">#10B981</color>
+    <color name="clay_danger">#F43F5E</color>
+    <color name="clay_warning">#F59E0B</color>
+</resources>

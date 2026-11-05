@@ -1266,7 +1266,8 @@ export default function InsightsView({
       trade.ltfScreenshot ||
       trade.fourHourScreenshot ||
       trade.oneHourScreenshot ||
-      trade.fifteenMinuteScreenshot
+      trade.fifteenMinuteScreenshot ||
+      trade.dxyScreenshot
     ));
     const ruleTrackedTrades = sortedTrades.filter(trade => {
       const storedMax = trade.setupRuleMaxScore || 0;

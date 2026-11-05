@@ -153,6 +153,7 @@ const normalizeFirestoreTrade = (trade: Trade): Trade => ({
   fourHourScreenshot: trade.fourHourScreenshot || '',
   oneHourScreenshot: trade.oneHourScreenshot || '',
   fifteenMinuteScreenshot: trade.fifteenMinuteScreenshot || '',
+  dxyScreenshot: trade.dxyScreenshot || '',
   journalingStatus: trade.journalingStatus || (isTradeJournalComplete(trade) ? 'COMPLETE' : 'PENDING')
 });
 
@@ -187,7 +188,7 @@ const mergeRemoteTradeWithLocalJournal = (remoteTrade: Trade, localTrade: Trade)
     shouldWriteBack = true;
   }
 
-  (['fourHourScreenshot', 'oneHourScreenshot', 'fifteenMinuteScreenshot'] as const).forEach(field => {
+  (['fourHourScreenshot', 'oneHourScreenshot', 'fifteenMinuteScreenshot', 'dxyScreenshot'] as const).forEach(field => {
     if (isNonEmptyText(localTrade[field]) && !isNonEmptyText(remoteTrade[field])) {
       merged[field] = localTrade[field];
       shouldWriteBack = true;

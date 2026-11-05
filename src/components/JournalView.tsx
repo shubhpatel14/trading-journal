@@ -32,7 +32,10 @@ import {
   Check,
   Coins,
   Layers3,
-  Minus
+  Minus,
+  Copy,
+  Clipboard,
+  ClipboardCheck
 } from 'lucide-react';
 import { Trade, TradeGrade, TradingAccount, JournalRule, SetupDefinition, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getStoredMistakes, saveStoredMistakes } from '../utils/mistakes';
@@ -469,12 +472,37 @@ export default function JournalView({
   const [editRuleLabel, setEditRuleLabel] = useState('');
   const [editRuleDesc, setEditRuleDesc] = useState('');
 
-  // High / Low Timeframe Screenshots URLs
+  // Timeframe & Confluence Screenshots URLs (1M, 5M, 15M, 1HR, 4HR, DXY)
   const [htfScreenshot, setHtfScreenshot] = useState('');
   const [ltfScreenshot, setLtfScreenshot] = useState('');
   const [fourHourScreenshot, setFourHourScreenshot] = useState('');
   const [oneHourScreenshot, setOneHourScreenshot] = useState('');
   const [fifteenMinuteScreenshot, setFifteenMinuteScreenshot] = useState('');
+  const [dxyScreenshot, setDxyScreenshot] = useState('');
+
+  // Copied Trade Screenshots Bundle (persisted across sessions)
+  const [copiedScreenshots, setCopiedScreenshots] = useState<{
+    ltfScreenshot?: string;
+    htfScreenshot?: string;
+    fifteenMinuteScreenshot?: string;
+    oneHourScreenshot?: string;
+    fourHourScreenshot?: string;
+    dxyScreenshot?: string;
+    sourceTradeId?: string;
+    sourceAsset?: string;
+    sourceDate?: string;
+    count: number;
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem('tradeforge_copied_trade_screenshots');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [copyFeedbackTradeId, setCopyFeedbackTradeId] = useState<string | null>(null);
+  const [pasteFeedbackTradeId, setPasteFeedbackTradeId] = useState<string | null>(null);
+  const [formPasteFeedback, setFormPasteFeedback] = useState(false);
 
   // Filtering / Search State
   const [tradeTypeTab, setTradeTypeTab] = useState<'ALL' | 'COMPLETED' | 'PENDING'>('ALL');
@@ -548,6 +576,7 @@ export default function JournalView({
       setFourHourScreenshot('');
       setOneHourScreenshot('');
       setFifteenMinuteScreenshot('');
+      setDxyScreenshot('');
       setShowForm(true);
       setEditingId(null);
     }
@@ -620,6 +649,7 @@ export default function JournalView({
     setFourHourScreenshot('');
     setOneHourScreenshot('');
     setFifteenMinuteScreenshot('');
+    setDxyScreenshot('');
     setSelectedMistakes(['None']);
     setTradeGrade('B');
     setSetupRuleChecks({});
@@ -669,6 +699,7 @@ export default function JournalView({
     setFourHourScreenshot(trade.fourHourScreenshot || '');
     setOneHourScreenshot(trade.oneHourScreenshot || '');
     setFifteenMinuteScreenshot(trade.fifteenMinuteScreenshot || '');
+    setDxyScreenshot(trade.dxyScreenshot || '');
     setTradeGrade(getTradeGrade(trade) || 'B');
     setSetupRuleChecks(trade.setupRuleChecks || {});
     // The row action is explicitly a journaling action. Default the editor to
@@ -837,6 +868,7 @@ export default function JournalView({
       fourHourScreenshot: fourHourScreenshot.trim(),
       oneHourScreenshot: oneHourScreenshot.trim(),
       fifteenMinuteScreenshot: fifteenMinuteScreenshot.trim(),
+      dxyScreenshot: dxyScreenshot.trim(),
       tradeGrade,
       journalingStatus: formJournalingStatus || 'COMPLETE'
     };
@@ -873,6 +905,117 @@ export default function JournalView({
     }
   };
 
+  // Copy all screenshot links (1M, 5M, 15M, 1HR, 4HR, DXY) to clipboard and internal memory
+  const handleCopyTradeScreenshots = (trade: {
+    ltfScreenshot?: string;
+    htfScreenshot?: string;
+    fifteenMinuteScreenshot?: string;
+    oneHourScreenshot?: string;
+    fourHourScreenshot?: string;
+    dxyScreenshot?: string;
+    id?: string;
+    asset?: string;
+    date?: string;
+  }) => {
+    const clean = {
+      ltfScreenshot: trade.ltfScreenshot?.trim() || '',
+      htfScreenshot: trade.htfScreenshot?.trim() || '',
+      fifteenMinuteScreenshot: trade.fifteenMinuteScreenshot?.trim() || '',
+      oneHourScreenshot: trade.oneHourScreenshot?.trim() || '',
+      fourHourScreenshot: trade.fourHourScreenshot?.trim() || '',
+      dxyScreenshot: trade.dxyScreenshot?.trim() || '',
+    };
+
+    const count = Object.values(clean).filter(Boolean).length;
+    if (count === 0) {
+      alert('This trade does not have any screenshots to copy.');
+      return;
+    }
+
+    const bundle = {
+      ...clean,
+      sourceTradeId: trade.id,
+      sourceAsset: trade.asset,
+      sourceDate: trade.date,
+      count
+    };
+
+    setCopiedScreenshots(bundle);
+    try {
+      localStorage.setItem('tradeforge_copied_trade_screenshots', JSON.stringify(bundle));
+    } catch (err) {
+      console.warn('Failed to save copied screenshots to localStorage', err);
+    }
+
+    // Format human-readable text for system clipboard
+    const lines: string[] = [];
+    if (clean.ltfScreenshot) lines.push(`1M: ${clean.ltfScreenshot}`);
+    if (clean.htfScreenshot) lines.push(`5M: ${clean.htfScreenshot}`);
+    if (clean.fifteenMinuteScreenshot) lines.push(`15M: ${clean.fifteenMinuteScreenshot}`);
+    if (clean.oneHourScreenshot) lines.push(`1HR: ${clean.oneHourScreenshot}`);
+    if (clean.fourHourScreenshot) lines.push(`4HR: ${clean.fourHourScreenshot}`);
+    if (clean.dxyScreenshot) lines.push(`DXY: ${clean.dxyScreenshot}`);
+    const clipText = lines.join('\n');
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(clipText).catch(() => {});
+    }
+
+    if (trade.id) {
+      setCopyFeedbackTradeId(trade.id);
+      setTimeout(() => setCopyFeedbackTradeId(null), 2500);
+    }
+  };
+
+  const handlePasteScreenshotsToForm = (bundle?: typeof copiedScreenshots) => {
+    const src = bundle || copiedScreenshots;
+    if (!src || src.count === 0) return;
+    if (src.ltfScreenshot) setLtfScreenshot(src.ltfScreenshot);
+    if (src.htfScreenshot) setHtfScreenshot(src.htfScreenshot);
+    if (src.fifteenMinuteScreenshot) setFifteenMinuteScreenshot(src.fifteenMinuteScreenshot);
+    if (src.oneHourScreenshot) setOneHourScreenshot(src.oneHourScreenshot);
+    if (src.fourHourScreenshot) setFourHourScreenshot(src.fourHourScreenshot);
+    if (src.dxyScreenshot) setDxyScreenshot(src.dxyScreenshot);
+
+    setFormPasteFeedback(true);
+    setTimeout(() => setFormPasteFeedback(false), 2000);
+  };
+
+  const handlePasteScreenshotsToTrade = (trade: Trade) => {
+    if (!copiedScreenshots || copiedScreenshots.count === 0) return;
+    const updatedTrade: Trade = {
+      ...trade,
+      ...(copiedScreenshots.ltfScreenshot ? { ltfScreenshot: copiedScreenshots.ltfScreenshot } : {}),
+      ...(copiedScreenshots.htfScreenshot ? { htfScreenshot: copiedScreenshots.htfScreenshot } : {}),
+      ...(copiedScreenshots.fifteenMinuteScreenshot ? { fifteenMinuteScreenshot: copiedScreenshots.fifteenMinuteScreenshot } : {}),
+      ...(copiedScreenshots.oneHourScreenshot ? { oneHourScreenshot: copiedScreenshots.oneHourScreenshot } : {}),
+      ...(copiedScreenshots.fourHourScreenshot ? { fourHourScreenshot: copiedScreenshots.fourHourScreenshot } : {}),
+      ...(copiedScreenshots.dxyScreenshot ? { dxyScreenshot: copiedScreenshots.dxyScreenshot } : {}),
+    };
+    onEditTrade(trade.id, updatedTrade);
+    setPasteFeedbackTradeId(trade.id);
+    setTimeout(() => setPasteFeedbackTradeId(null), 2500);
+  };
+
+  const tradeHasScreenshots = (trade: Trade) => Boolean(
+    trade.ltfScreenshot?.trim() ||
+    trade.htfScreenshot?.trim() ||
+    trade.fifteenMinuteScreenshot?.trim() ||
+    trade.oneHourScreenshot?.trim() ||
+    trade.fourHourScreenshot?.trim() ||
+    trade.dxyScreenshot?.trim()
+  );
+
+  const tradesWithScreenshots = trades.filter(tradeHasScreenshots);
+  const formHasScreenshots = Boolean(
+    ltfScreenshot.trim() ||
+    htfScreenshot.trim() ||
+    fifteenMinuteScreenshot.trim() ||
+    oneHourScreenshot.trim() ||
+    fourHourScreenshot.trim() ||
+    dxyScreenshot.trim()
+  );
+
   const escapeCSV = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
   const downloadFile = (content: string, filename: string, type: string) => {
@@ -892,13 +1035,13 @@ export default function JournalView({
     const headers = [
       'ID', 'AccountID', 'Date', 'Time', 'Asset', 'Setup', 'Setup ID', 'Direction', 'Entry', 'Exit', 'Size',
       'Stop Loss', 'Take Profit', 'Gross PnL', 'Commission', 'Swap', 'Other Fees', 'Total Fees',
-      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', '1M Screenshot', '5M Screenshot', '15M Screenshot', '1HR Screenshot', '4HR Screenshot'
+      'Net PnL', 'Status', 'Session', 'Trade Grade', 'Playbook Rule Score', 'Playbook Rule Max', 'Playbook Quality Gate', 'Mistakes', 'Notes', '1M Screenshot', '5M Screenshot', '15M Screenshot', '1HR Screenshot', '4HR Screenshot', 'DXY Screenshot'
     ];
     const rows = trades.map(t => [
       t.id, t.accountId, t.date, t.time, t.asset, t.setup, t.setupId || '', t.direction, t.entryPrice, t.exitPrice, t.size,
       t.sl, t.tp, t.pnl, t.commission ?? '', t.swap ?? '', t.fee ?? '', getTradeTotalFees(t),
       getTradeNetPnl(t), t.status, t.session, getTradeGrade(t) ?? '', t.setupRuleScore ?? '', t.setupRuleMaxScore ?? '', t.setupMinChecklistScore ?? '', t.mistakes?.join(';') || 'None', t.notes,
-      t.ltfScreenshot || '', t.htfScreenshot || '', t.fifteenMinuteScreenshot || '', t.oneHourScreenshot || '', t.fourHourScreenshot || ''
+      t.ltfScreenshot || '', t.htfScreenshot || '', t.fifteenMinuteScreenshot || '', t.oneHourScreenshot || '', t.fourHourScreenshot || '', t.dxyScreenshot || ''
     ].map(escapeCSV).join(','));
 
     downloadFile(
@@ -1574,16 +1717,98 @@ export default function JournalView({
           {/* Screenshot Attachments with Drag & Drop, File Upload, Paste & Permanent Storage */}
           <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                Trade Execution Screenshots (Permanent IndexedDB Storage)
-              </span>
-              <div className="flex items-center gap-2 text-3xs text-slate-500 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                <Sparkles size={12} className="text-blue-600" />
-                <span>Supports Drag & Drop, File Upload & <strong>Ctrl + V Paste</strong></span>
+              <div>
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                  Trade Execution Screenshots (Permanent IndexedDB Storage)
+                </span>
+                <span className="text-3xs text-slate-500">
+                  Timeframe analysis (1M, 5M, 15M, 1HR, 4HR) &amp; DXY Dollar Index confluence
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {formHasScreenshots && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopyTradeScreenshots({
+                      ltfScreenshot,
+                      htfScreenshot,
+                      fifteenMinuteScreenshot,
+                      oneHourScreenshot,
+                      fourHourScreenshot,
+                      dxyScreenshot,
+                      id: editingId || undefined,
+                      asset
+                    })}
+                    className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-slate-200 hover:border-blue-300 rounded-lg text-2xs font-bold transition flex items-center gap-1 cursor-pointer shadow-3xs"
+                    title="Copy all currently entered screenshot links (1M, 5M, 15M, 1HR, 4HR, DXY)"
+                  >
+                    <Copy size={12} />
+                    <span>Copy Form SS Links</span>
+                  </button>
+                )}
+
+                {copiedScreenshots && copiedScreenshots.count > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handlePasteScreenshotsToForm()}
+                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg text-2xs font-bold transition flex items-center gap-1 cursor-pointer shadow-3xs"
+                    title={`Paste ${copiedScreenshots.count} copied screenshot links`}
+                  >
+                    {formPasteFeedback ? (
+                      <>
+                        <CheckCircle2 size={12} className="text-emerald-600" />
+                        <span>Pasted {copiedScreenshots.count} links!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clipboard size={12} />
+                        <span>Paste Copied SS ({copiedScreenshots.count})</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {tradesWithScreenshots.length > 0 && (
+                  <div className="flex items-center gap-1 text-2xs">
+                    <select
+                      onChange={(e) => {
+                        const tradeId = e.target.value;
+                        if (!tradeId) return;
+                        const src = trades.find(t => t.id === tradeId);
+                        if (src) {
+                          handleCopyTradeScreenshots(src);
+                          handlePasteScreenshotsToForm({
+                            ltfScreenshot: src.ltfScreenshot,
+                            htfScreenshot: src.htfScreenshot,
+                            fifteenMinuteScreenshot: src.fifteenMinuteScreenshot,
+                            oneHourScreenshot: src.oneHourScreenshot,
+                            fourHourScreenshot: src.fourHourScreenshot,
+                            dxyScreenshot: src.dxyScreenshot,
+                            sourceTradeId: src.id,
+                            sourceAsset: src.asset,
+                            sourceDate: src.date,
+                            count: [src.ltfScreenshot, src.htfScreenshot, src.fifteenMinuteScreenshot, src.oneHourScreenshot, src.fourHourScreenshot, src.dxyScreenshot].filter(Boolean).length
+                          });
+                        }
+                        e.target.value = '';
+                      }}
+                      defaultValue=""
+                      className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-2xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-3xs"
+                    >
+                      <option value="" disabled>Copy from past trade...</option>
+                      {tradesWithScreenshots.slice(0, 10).map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.date} {t.asset} ({t.direction}) - {[t.ltfScreenshot, t.htfScreenshot, t.fifteenMinuteScreenshot, t.oneHourScreenshot, t.fourHourScreenshot, t.dxyScreenshot].filter(Boolean).length} SS
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <ScreenshotUploader
                 label="1 Minute Screenshot (1M)"
                 value={ltfScreenshot}
@@ -1619,13 +1844,21 @@ export default function JournalView({
                 onOpenLightbox={(url) => setActiveLightboxImg(url)}
                 badgeText="4HR Structure"
               />
+              <ScreenshotUploader
+                label="DXY Screenshot (Dollar Index)"
+                value={dxyScreenshot}
+                onChange={setDxyScreenshot}
+                onOpenLightbox={(url) => setActiveLightboxImg(url)}
+                badgeText="DXY Trend / Confluence"
+                placeholder="Paste DXY URL or image (Ctrl+V)"
+              />
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap text-3xs bg-white p-2 border rounded-lg">
-              <span className="font-bold text-blue-700 uppercase flex items-center gap-1">
-                <Sparkles size={11} />
-                Quick-Paste Demo Charts:
-              </span>
+            <div className="flex items-center justify-between gap-2 flex-wrap text-3xs bg-white p-2 border rounded-lg">
+              <div className="flex items-center gap-2 text-slate-500">
+                <Sparkles size={12} className="text-blue-600" />
+                <span>Supports Drag &amp; Drop, File Upload &amp; <strong>Ctrl + V Paste</strong> directly into each box</span>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2209,6 +2442,39 @@ export default function JournalView({
 
                         <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end items-center gap-1">
+                            {tradeHasScreenshots(trade) ? (
+                              <button
+                                onClick={() => handleCopyTradeScreenshots(trade)}
+                                className={`p-1.5 rounded transition cursor-pointer border shadow-3xs ${
+                                  copyFeedbackTradeId === trade.id
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-300'
+                                    : 'bg-white hover:bg-blue-50 text-slate-500 hover:text-blue-600 border-slate-200 hover:border-blue-300'
+                                }`}
+                                title="Copy Trade Screenshots (1M, 5M, 15M, 1HR, 4HR, DXY)"
+                              >
+                                {copyFeedbackTradeId === trade.id ? (
+                                  <CheckCircle2 size={12} className="text-emerald-600" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            ) : copiedScreenshots && copiedScreenshots.count > 0 ? (
+                              <button
+                                onClick={() => handlePasteScreenshotsToTrade(trade)}
+                                className={`p-1.5 rounded transition cursor-pointer border shadow-3xs ${
+                                  pasteFeedbackTradeId === trade.id
+                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-400'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200/90'
+                                }`}
+                                title={`Paste copied screenshots (${copiedScreenshots.count} links) to this trade`}
+                              >
+                                {pasteFeedbackTradeId === trade.id ? (
+                                  <CheckCircle2 size={12} className="text-emerald-600" />
+                                ) : (
+                                  <Clipboard size={12} />
+                                )}
+                              </button>
+                            ) : null}
                             <button
                               onClick={() => handleStartEdit(trade)}
                               className="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/80 text-3xs font-bold rounded transition cursor-pointer flex items-center gap-1.5 shadow-3xs"
@@ -2297,32 +2563,106 @@ export default function JournalView({
                               </div>
 
                               {/* Saved chart screenshots */}
-                              {(trade.ltfScreenshot || trade.htfScreenshot || trade.fifteenMinuteScreenshot || trade.oneHourScreenshot || trade.fourHourScreenshot) ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-1">
-                                  {[
-                                    { image: trade.ltfScreenshot, label: '1 Minute Entry (1M SS)' },
-                                    { image: trade.htfScreenshot, label: '5 Minute Structure (5M SS)' },
-                                    { image: trade.fifteenMinuteScreenshot, label: '15 Minute Execution (15M SS)' },
-                                    { image: trade.oneHourScreenshot, label: '1 Hour Context (1HR SS)' },
-                                    { image: trade.fourHourScreenshot, label: '4 Hour Structure (4HR SS)' },
-                                  ].filter(item => Boolean(item.image)).map(item => (
-                                    <div key={item.label} className="space-y-2">
-                                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                        <ImageIcon size={11} className="text-blue-600" />
-                                        {item.label}
-                                      </span>
-                                      <div className="relative group overflow-hidden bg-slate-950 aspect-[16/10] rounded-xl border">
-                                        <img src={item.image} alt={item.label} referrerPolicy="no-referrer" className="w-full h-full object-cover transition duration-300 group-hover:scale-102" />
-                                        <button type="button" onClick={() => setActiveLightboxImg(item.image || '')} className="absolute bottom-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition cursor-pointer" aria-label={`Open ${item.label}`}>
-                                          <Maximize2 size={11} />
+                              {(trade.ltfScreenshot || trade.htfScreenshot || trade.fifteenMinuteScreenshot || trade.oneHourScreenshot || trade.fourHourScreenshot || trade.dxyScreenshot) ? (
+                                <div className="space-y-3 pt-1">
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                      <ImageIcon size={13} className="text-blue-600" />
+                                      Saved Chart Screenshots ({[trade.ltfScreenshot, trade.htfScreenshot, trade.fifteenMinuteScreenshot, trade.oneHourScreenshot, trade.fourHourScreenshot, trade.dxyScreenshot].filter(Boolean).length})
+                                    </span>
+
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {copiedScreenshots && copiedScreenshots.count > 0 && copiedScreenshots.sourceTradeId !== trade.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePasteScreenshotsToTrade(trade)}
+                                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-3xs"
+                                          title={`Apply copied screenshots (${copiedScreenshots.count} links) to this trade`}
+                                        >
+                                          {pasteFeedbackTradeId === trade.id ? (
+                                            <>
+                                              <CheckCircle2 size={13} className="text-emerald-600" />
+                                              <span>Pasted!</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Clipboard size={13} />
+                                              <span>Paste Copied SS ({copiedScreenshots.count})</span>
+                                            </>
+                                          )}
                                         </button>
-                                      </div>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyTradeScreenshots(trade)}
+                                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-3xs"
+                                        title="Copy all screenshot links (1M, 5M, 15M, 1HR, 4HR, DXY)"
+                                      >
+                                        {copyFeedbackTradeId === trade.id ? (
+                                          <>
+                                            <CheckCircle2 size={13} className="text-emerald-600" />
+                                            <span className="text-emerald-700">Copied All Screenshot Links!</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy size={13} />
+                                            <span>Copy Trade Screenshots</span>
+                                          </>
+                                        )}
+                                      </button>
                                     </div>
-                                  ))}
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    {[
+                                      { image: trade.ltfScreenshot, label: '1 Minute Entry (1M SS)' },
+                                      { image: trade.htfScreenshot, label: '5 Minute Structure (5M SS)' },
+                                      { image: trade.fifteenMinuteScreenshot, label: '15 Minute Execution (15M SS)' },
+                                      { image: trade.oneHourScreenshot, label: '1 Hour Context (1HR SS)' },
+                                      { image: trade.fourHourScreenshot, label: '4 Hour Structure (4HR SS)' },
+                                      { image: trade.dxyScreenshot, label: 'DXY Dollar Index (DXY SS)' },
+                                    ].filter(item => Boolean(item.image)).map(item => (
+                                      <div key={item.label} className="space-y-2">
+                                        <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                          <ImageIcon size={11} className="text-blue-600" />
+                                          {item.label}
+                                        </span>
+                                        <div className="relative group overflow-hidden bg-slate-950 aspect-[16/10] rounded-xl border">
+                                          <img src={item.image} alt={item.label} referrerPolicy="no-referrer" className="w-full h-full object-cover transition duration-300 group-hover:scale-102" />
+                                          <button type="button" onClick={() => setActiveLightboxImg(item.image || '')} className="absolute bottom-2 right-2 p-1.5 bg-slate-900/80 hover:bg-slate-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition cursor-pointer" aria-label={`Open ${item.label}`}>
+                                            <Maximize2 size={11} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="text-3xs text-slate-400 bg-white p-3 border rounded-xl italic">
-                                  No chart screenshots logged. Add screenshots to review this execution.
+                                <div className="p-3 bg-white border border-dashed border-slate-200 rounded-xl flex items-center justify-between flex-wrap gap-2">
+                                  <span className="text-3xs text-slate-400 italic">
+                                    No chart screenshots logged. Add screenshots to review this execution.
+                                  </span>
+                                  {copiedScreenshots && copiedScreenshots.count > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePasteScreenshotsToTrade(trade)}
+                                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-3xs"
+                                      title="Paste copied screenshots into this trade"
+                                    >
+                                      {pasteFeedbackTradeId === trade.id ? (
+                                        <>
+                                          <CheckCircle2 size={12} className="text-emerald-600" />
+                                          <span className="text-emerald-700">Screenshots Pasted!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Clipboard size={12} />
+                                          <span>Paste Copied Screenshots ({copiedScreenshots.count} links)</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                               )}
 

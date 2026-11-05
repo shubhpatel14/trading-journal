@@ -266,6 +266,10 @@ def run_sync():
             "mistakes": [],
             "htfScreenshot": "",
             "ltfScreenshot": "",
+            "fifteenMinuteScreenshot": "",
+            "oneHourScreenshot": "",
+            "fourHourScreenshot": "",
+            "dxyScreenshot": "",
         }
 
         # MT5-owned execution fields. User-owned journal fields are only written

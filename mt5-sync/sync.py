@@ -153,6 +153,10 @@ for position_id, position_deals in positions.items():
         "mistakes": [],
         "htfScreenshot": "",
         "ltfScreenshot": "",
+        "fifteenMinuteScreenshot": "",
+        "oneHourScreenshot": "",
+        "fourHourScreenshot": "",
+        "dxyScreenshot": "",
     }
 
     # MT5-owned execution fields. User-owned journal fields are only written

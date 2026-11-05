@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "648615464927",
+    "project_id": "tradingjournalapp-4ed16",
+    "storage_bucket": "tradingjournalapp-4ed16.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648615464927:android:0a99480ccb4fd7eafafe6a",
+        "android_client_info": {
+          "package_name": "com.tradeforge.journal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5EpZZdyGJQoYy914hlHVJvQyXz3guTuM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:648615464927:android:0a99480ccb4fd7eafafe6b",
+        "android_client_info": {
+          "package_name": "com.tradeforge.journal.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5EpZZdyGJQoYy914hlHVJvQyXz3guTuM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

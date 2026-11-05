@@ -299,6 +299,14 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
       image: selectedTrade?.fourHourScreenshot,
       description: 'Swing structure, 4H supply & demand zones, overarching market narrative',
     },
+    {
+      key: 'dxy',
+      label: 'DXY',
+      badgeTitle: 'DXY Trend',
+      fullName: 'US Dollar Index (DXY) Chart',
+      image: selectedTrade?.dxyScreenshot,
+      description: 'DXY dollar index trend, correlation alignment, and macro confluence',
+    },
   ], [selectedTrade]);
 
   const availableScreenshots = useMemo(() => {
@@ -354,6 +362,7 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
       { key: '15m', image: nextTrade.fifteenMinuteScreenshot },
       { key: '1hr', image: nextTrade.oneHourScreenshot },
       { key: '4hr', image: nextTrade.fourHourScreenshot },
+      { key: 'dxy', image: nextTrade.dxyScreenshot },
     ].filter((s) => Boolean(s.image && s.image.trim().length > 0));
 
     if (currentKey) {
@@ -974,6 +983,12 @@ export default function TradeReviewView({ trades, accounts, onEditTrade }: Trade
                 timeframeTag="5. 4HR"
                 label="4 hour chart"
                 onOpen={() => openZoomForTimeframe('4hr')}
+              />
+              <ScreenshotPanel
+                image={selectedTrade.dxyScreenshot}
+                timeframeTag="6. DXY"
+                label="DXY Dollar Index chart"
+                onOpen={() => openZoomForTimeframe('dxy')}
               />
             </div>
 

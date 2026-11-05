@@ -477,7 +477,7 @@ export default function ReviewView({
                     )}
 
                     {/* Screenshots */}
-                    {(t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot) && (
+                    {(t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot || t.dxyScreenshot) && (
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap">
                         {[
                           { img: t.ltfScreenshot, tag: '1M', label: '1M Chart' },
@@ -485,6 +485,7 @@ export default function ReviewView({
                           { img: t.fifteenMinuteScreenshot, tag: '15M', label: '15M Chart' },
                           { img: t.oneHourScreenshot, tag: '1HR', label: '1HR Chart' },
                           { img: t.fourHourScreenshot, tag: '4HR', label: '4HR Chart' },
+                          { img: t.dxyScreenshot, tag: 'DXY', label: 'DXY Chart' },
                         ].filter(item => Boolean(item.img)).map((item, idx) => (
                           <div 
                             key={idx}
@@ -906,11 +907,11 @@ export default function ReviewView({
               Key Trade Execution Screenshots for the Week
             </h2>
 
-            {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot).length === 0 ? (
+            {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot || t.dxyScreenshot).length === 0 ? (
               <p className="text-xs text-slate-400 italic">No trade screenshots uploaded for trades in this week.</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot).slice(0, 8).map((t) => (
+                {weekTrades.filter(t => t.ltfScreenshot || t.htfScreenshot || t.fifteenMinuteScreenshot || t.oneHourScreenshot || t.fourHourScreenshot || t.dxyScreenshot).slice(0, 8).map((t) => (
                   <div key={t.id} className="bg-white p-3 rounded-2xl border border-slate-100 space-y-2">
                     <div className="flex justify-between items-center text-xs font-bold">
                       <span className="font-mono">{t.asset} ({t.direction})</span>
@@ -926,6 +927,7 @@ export default function ReviewView({
                         { img: t.fifteenMinuteScreenshot, tag: '15M' },
                         { img: t.oneHourScreenshot, tag: '1HR' },
                         { img: t.fourHourScreenshot, tag: '4HR' },
+                        { img: t.dxyScreenshot, tag: 'DXY' },
                       ].filter(item => Boolean(item.img)).map((item, idx) => (
                         <div 
                           key={idx}

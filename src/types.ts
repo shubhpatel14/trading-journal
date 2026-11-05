@@ -111,6 +111,7 @@ export interface Trade {
   fifteenMinuteScreenshot?: string; // 15-minute chart screenshot (15M)
   oneHourScreenshot?: string; // 1-hour chart screenshot (1HR)
   fourHourScreenshot?: string; // 4-hour chart screenshot (4HR)
+  dxyScreenshot?: string; // US Dollar Index (DXY) chart screenshot
   tradeGrade?: TradeGrade; // Manual execution grade selected in the journal
   /** @deprecated Legacy generic checklist data retained for backup compatibility. */
   checklist?: Record<string, boolean>;
