@@ -88,8 +88,14 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
 
+    // Google Play Services Auth for Native Android Google Account Picker
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+
     // Coil for screenshots / image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // AndroidX WebKit for high-performance WebView with secure asset loading
+    implementation("androidx.webkit:webkit:1.12.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -97,3 +103,13 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
+
+tasks.register<Copy>("copyWebAssets") {
+    from("${rootProject.projectDir}/../dist")
+    into("${projectDir}/src/main/assets/www")
+}
+
+tasks.named("preBuild") {
+    dependsOn("copyWebAssets")
+}
+

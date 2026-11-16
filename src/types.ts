@@ -33,6 +33,69 @@ export interface TradePlan {
   createdAt: string;
 }
 
+export type BiasDirection = 'BULLISH' | 'BEARISH';
+export type ChecklistDecision = 'GO' | 'NO_GO';
+
+export interface TimeframeEmaItem {
+  bias: BiasDirection;
+  imageUrl?: string;
+}
+
+export interface LiquidityLevel {
+  id: string;
+  price: string;
+  note?: string;
+}
+
+export interface DailyTradeChecklist {
+  id: string; // e.g. checklist-YYYY-MM-DD
+  date: string; // YYYY-MM-DD
+  asset?: string; // Optional asset e.g. XAUUSD
+  
+  // 1. Bias & Why
+  bias: BiasDirection;
+  whyNotes: string;
+
+  // 2. EMAs
+  emas: {
+    fourHour: TimeframeEmaItem;
+    oneHour: TimeframeEmaItem;
+    fifteenMin: TimeframeEmaItem;
+    fiveMin: TimeframeEmaItem;
+    oneMin: TimeframeEmaItem;
+  };
+
+  // 3. Liquidity Points
+  liquidity: {
+    imageUrl?: string;
+    levels: LiquidityLevel[];
+  };
+
+  // 4. Order Flow
+  orderFlow: BiasDirection;
+
+  // 5. DXY
+  dxy: BiasDirection;
+
+  // 6. Final Trade Plan
+  finalPlan: {
+    text: string;
+    imageUrl?: string;
+  };
+
+  // 7. LIVE Checklist
+  liveChecklist: {
+    emas: ChecklistDecision;
+    liquidity: ChecklistDecision;
+    technicalLevel: ChecklistDecision;
+    dxy: ChecklistDecision;
+    orderFlow: ChecklistDecision;
+  };
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface JournalRule {
   id: string;
   label: string;

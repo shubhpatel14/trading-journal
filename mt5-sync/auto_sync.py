@@ -3,14 +3,23 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import MetaTrader5 as mt5
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth as fb_auth
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-USER_UID = "bu8j28sFuSOqssYhCR9uNamFox92" # change this user id 
+USER_UID = "bu8j28sFuSOqssYhCR9uNamFox92" # change this user id or gmail (e.g. pshubh1410@gmail.com)
 ACCOUNT_ID = "acc-1791288147151" # change this acc id for different account
+
+def get_resolved_user_uid(configured_uid: str) -> str:
+    if "@" in configured_uid:
+        try:
+            user = fb_auth.get_user_by_email(configured_uid)
+            return user.uid
+        except Exception as e:
+            print(f"[WARNING] Could not find user with email '{configured_uid}': {e}")
+    return configured_uid
 
 # ============================================================
 # FIREBASE INITIALIZATION
@@ -164,8 +173,11 @@ def run_sync():
     now_str = sync_start.strftime("%Y-%m-%d %H:%M:%S")
     to_date = sync_start + timedelta(days=2)
 
+    # Dynamically resolve user UID (supports email address or direct UID)
+    active_uid = get_resolved_user_uid(USER_UID)
+
     # Dynamically resolve target account (picks primary account configured in TradeForge app)
-    target_acc_id, target_acc_name, target_acc_ref = resolve_target_account(db, USER_UID, ACCOUNT_ID)
+    target_acc_id, target_acc_name, target_acc_ref = resolve_target_account(db, active_uid, ACCOUNT_ID)
 
     print("=" * 60)
     print("              MT5 AUTO SYNC (INCREMENTAL)")

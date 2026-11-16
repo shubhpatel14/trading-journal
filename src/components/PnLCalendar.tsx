@@ -7,7 +7,9 @@ import {
   CalendarDays,
   Calendar,
   FileText,
-  Wallet
+  Wallet,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import { Trade, getTradeNetPnl, getTradeTotalFees } from '../types';
 import { getTradeDisplayDateTime } from '../utils/tradeTime';
@@ -48,6 +50,7 @@ const getLocalDateStr = (d: Date) => {
 
 export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100000 }: PnLCalendarProps) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'agenda'>('grid');
 
   // Use current date as baseline calendar view
   const [currentDate, setCurrentDate] = useState(() => {
@@ -165,6 +168,26 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
     return total;
   }, [trades, year, month]);
 
+  const activeDaysInMonth = React.useMemo(() => {
+    const dayMap = new Map<string, { dateStr: string; trades: Trade[]; pnl: number; wins: number; losses: number }>();
+    trades.forEach(t => {
+      const dStr = getTradeDisplayDateTime(t).date;
+      const d = parseDateStr(dStr);
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        if (!dayMap.has(dStr)) {
+          dayMap.set(dStr, { dateStr: dStr, trades: [], pnl: 0, wins: 0, losses: 0 });
+        }
+        const item = dayMap.get(dStr)!;
+        item.trades.push(t);
+        const net = getTradeNetPnl(t);
+        item.pnl += net;
+        if (net > 0) item.wins += 1;
+        else if (net < 0) item.losses += 1;
+      }
+    });
+    return Array.from(dayMap.values()).sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+  }, [trades, year, month]);
+
   return (
     <div className="space-y-8" id="calendar-tab">
       
@@ -180,23 +203,63 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
           </p>
         </div>
 
-        {/* Navigation / Month select */}
-        <div className="flex items-center gap-3 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
-          <button
-            onClick={handlePrevMonth}
-            className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition cursor-pointer"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-xs font-bold text-slate-800 min-w-[110px] text-center font-mono">
-            {MONTHS[month]} {year}
-          </span>
-          <button
-            onClick={handleNextMonth}
-            className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition cursor-pointer"
-          >
-            <ChevronRight size={16} />
-          </button>
+        {/* Navigation / Month select & View Mode Toggle */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Grid vs Daily Agenda Toggle */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-xs">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-2.5 py-1 rounded-lg text-2xs font-extrabold transition cursor-pointer flex items-center gap-1 ${
+                viewMode === 'grid'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+              title="Full Calendar Grid"
+            >
+              <LayoutGrid size={12} />
+              <span>Grid</span>
+            </button>
+            <button
+              onClick={() => setViewMode('agenda')}
+              className={`px-2.5 py-1 rounded-lg text-2xs font-extrabold transition cursor-pointer flex items-center gap-1 ${
+                viewMode === 'agenda'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+              title="Mobile Daily Agenda Feed"
+            >
+              <List size={12} />
+              <span>Daily List</span>
+              {activeDaysInMonth.length > 0 && (
+                <span className={`px-1 py-0.2 rounded-full text-[9px] font-mono ${
+                  viewMode === 'agenda' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {activeDaysInMonth.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Month Navigator */}
+          <div className="flex items-center gap-2 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl shadow-xs">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition cursor-pointer"
+              title="Previous Month"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-xs font-bold text-slate-800 min-w-[100px] text-center font-mono">
+              {MONTHS[month]} {year}
+            </span>
+            <button
+              onClick={handleNextMonth}
+              className="p-1 hover:bg-slate-100 rounded-lg text-slate-600 transition cursor-pointer"
+              title="Next Month"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -247,11 +310,75 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
         </div>
       </div>
 
-      {/* Main Calendar Grid + Weekly columns */}
-      <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-visible">
-        <div className="min-w-[640px] sm:min-w-0">
-          {/* Calendar Grid Header */}
-          <div className="grid grid-cols-8 border-b border-slate-100 bg-slate-50/50 text-center text-3xs font-bold text-slate-400 uppercase tracking-widest py-3">
+      {viewMode === 'agenda' ? (
+        <div className="space-y-3">
+          {activeDaysInMonth.length === 0 ? (
+            <div className="bg-white border border-slate-100 rounded-2xl p-8 text-center text-slate-500">
+              <CalendarDays size={28} className="mx-auto text-slate-400 mb-2" />
+              <p className="font-bold text-sm text-slate-700">No trades recorded in {MONTHS[month]} {year}</p>
+              <p className="text-2xs text-slate-400 mt-1">Switch to Grid view or change months to see activity.</p>
+            </div>
+          ) : (
+            activeDaysInMonth.map(item => {
+              const eq = getEquityForDate(item.dateStr);
+              return (
+                <div
+                  key={item.dateStr}
+                  onClick={() => onSelectDate && onSelectDate(item.dateStr)}
+                  className="bg-white border border-slate-100 rounded-2xl p-4 shadow-xs hover:border-blue-300 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl flex flex-col items-center justify-center font-mono font-bold min-w-[50px] ${
+                      item.pnl >= 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}>
+                      <span className="text-sm">{item.dateStr.split('-')[2]}</span>
+                      <span className="text-[9px] uppercase font-sans font-bold">{new Date(`${item.dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 font-sans">
+                        {new Date(`${item.dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      <div className="text-3xs text-slate-500 font-sans mt-0.5 flex items-center gap-2">
+                        <span>{item.trades.length} {item.trades.length === 1 ? 'Trade' : 'Trades'} ({item.wins}W / {item.losses}L)</span>
+                        <span>•</span>
+                        <span className="font-mono text-slate-700 font-bold">Eq: ${eq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                    <span className={`text-sm font-extrabold font-mono px-3 py-1 rounded-xl border ${
+                      item.pnl >= 0
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                        : 'bg-rose-50 text-rose-700 border-rose-200/80'
+                    }`}>
+                      {item.pnl >= 0 ? '+' : ''}${item.pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <button className="text-blue-600 text-2xs font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                      <span>View Logs</span>
+                      <ChevronRight size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        /* Main Calendar Grid + Weekly columns */
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-xs overflow-hidden w-full max-w-full">
+          {/* Mobile horizontal scroll helper indicator */}
+          <div className="md:hidden flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-slate-50 border-b border-slate-100 text-[10px] text-slate-600 font-semibold">
+            <span className="flex items-center gap-1">
+              <span>👉 Swipe calendar horizontally for all days &amp; Weekly PnL</span>
+            </span>
+            <span className="font-mono text-blue-700 bg-white/90 px-1.5 py-0.5 rounded border border-blue-200/60 font-bold">8 Cols</span>
+          </div>
+
+          <div className="overflow-x-auto touch-pan-x custom-scrollbar w-full max-w-full">
+            <div className="min-w-[620px] sm:min-w-0">
+              {/* Calendar Grid Header */}
+              <div className="grid grid-cols-8 border-b border-slate-100 bg-slate-50/50 text-center text-3xs font-bold text-slate-400 uppercase tracking-widest py-3">
             {DAYS_OF_WEEK.map(d => (
               <div key={d} className="font-sans">{d}</div>
             ))}
@@ -300,7 +427,7 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
                         <div
                           onMouseEnter={() => setHoveredDate(day.dateStr)}
                           onMouseLeave={() => setHoveredDate(null)}
-                          className={`transition-all duration-200 ease-out absolute z-50 w-80 p-3.5 rounded-2xl bg-white/98 backdrop-blur-xl border border-slate-200/90 shadow-2xl text-slate-800 font-sans text-left ${
+                          className={`hidden md:block transition-all duration-200 ease-out absolute z-50 w-80 p-3.5 rounded-2xl bg-white/98 backdrop-blur-xl border border-slate-200/90 shadow-2xl text-slate-800 font-sans text-left ${
                             isHovered ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
                           } ${
                             isTopHalf
@@ -479,9 +606,11 @@ export default function PnLCalendar({ trades, onSelectDate, initialBalance = 100
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </div>
+  )}
 
     </div>
   );

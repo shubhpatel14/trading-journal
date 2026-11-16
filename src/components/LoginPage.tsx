@@ -115,9 +115,9 @@ export default function LoginPage({
       onMouseMove={handleMouseMove}
       className="min-h-screen w-full bg-[#070a13] text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans selection:bg-purple-500 selection:text-white"
     >
-      {/* Interactive Ambient Spotlight Glow Effect */}
+      {/* Interactive Ambient Spotlight Glow Effect - Desktop Only */}
       <div 
-        className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
+        className="hidden sm:block absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"
         style={{
           background: `radial-gradient(750px circle at ${mousePos.x}px ${mousePos.y}px, rgba(168, 85, 247, 0.15), rgba(56, 189, 248, 0.1), rgba(244, 114, 182, 0.05), transparent 75%)`
         }}
@@ -223,11 +223,14 @@ export default function LoginPage({
         {/* Laser Scanning Beam Line */}
         <div className="tf-animate-laser" />
 
-        {/* Multi-layered Aurora Borealis Glowing Mesh Orbs */}
-        <div className="absolute -top-[30%] -left-[20%] w-[80rem] h-[80rem] rounded-full bg-gradient-to-br from-purple-600/40 via-indigo-600/30 to-transparent blur-[160px] animate-aurora" />
-        <div className="absolute -bottom-[30%] -right-[20%] w-[85rem] h-[85rem] rounded-full bg-gradient-to-tl from-cyan-500/35 via-blue-600/30 to-transparent blur-[170px] animate-aurora" style={{ animationDelay: '3s' }} />
-        <div className="absolute top-[20%] left-[32%] w-[50rem] h-[50rem] rounded-full bg-gradient-to-tr from-pink-600/25 via-purple-600/20 to-transparent blur-[160px] animate-aurora" style={{ animationDelay: '6s' }} />
-        <div className="absolute bottom-[15%] left-[10%] w-[40rem] h-[40rem] rounded-full bg-emerald-500/20 blur-[140px] animate-aurora" style={{ animationDelay: '9s' }} />
+        {/* Mobile-optimized smooth ambient backdrop (low GPU memory) */}
+        <div className="sm:hidden absolute inset-0 bg-gradient-to-br from-purple-950/40 via-[#070a13] to-indigo-950/40 pointer-events-none" />
+
+        {/* Multi-layered Aurora Borealis Glowing Mesh Orbs (Desktop/Tablet) */}
+        <div className="hidden sm:block absolute -top-[30%] -left-[20%] w-[80rem] h-[80rem] rounded-full bg-gradient-to-br from-purple-600/40 via-indigo-600/30 to-transparent blur-[160px] animate-aurora" />
+        <div className="hidden sm:block absolute -bottom-[30%] -right-[20%] w-[85rem] h-[85rem] rounded-full bg-gradient-to-tl from-cyan-500/35 via-blue-600/30 to-transparent blur-[170px] animate-aurora" style={{ animationDelay: '3s' }} />
+        <div className="hidden sm:block absolute top-[20%] left-[32%] w-[50rem] h-[50rem] rounded-full bg-gradient-to-tr from-pink-600/25 via-purple-600/20 to-transparent blur-[160px] animate-aurora" style={{ animationDelay: '6s' }} />
+        <div className="hidden sm:block absolute bottom-[15%] left-[10%] w-[40rem] h-[40rem] rounded-full bg-emerald-500/20 blur-[140px] animate-aurora" style={{ animationDelay: '9s' }} />
 
         {/* Cyber Grid & Perspective Hologram Grid */}
         <div 

@@ -23,6 +23,7 @@ import {
   Loader2,
   ClipboardCheck,
   ListChecks,
+  CheckSquare,
   Coins,
   Heart,
   Brain,
@@ -30,7 +31,7 @@ import {
   Star,
   CheckCircle2
 } from 'lucide-react';
-import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, SetupDefinition } from './types';
+import { Trade, TradePlan, TradingAccount, DailyReview, WeeklyReview, JournalRule, getTradeNetPnl, SetupDefinition, DailyTradeChecklist } from './types';
 import { INITIAL_TRADE_PLANS, INITIAL_TRADES, INITIAL_ACCOUNTS, DEFAULT_JOURNAL_RULES, DEFAULT_SETUP_DEFINITIONS } from './mockData';
 
 // Import Firebase config & helpers
@@ -38,8 +39,13 @@ import {
   auth,
   db,
   googleProvider,
+  GoogleAuthProvider,
   isFirebaseConfigured,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signInWithCredential,
+  signInWithCustomToken,
   signInAnonymously,
   signOut,
   onAuthStateChanged,
@@ -70,6 +76,7 @@ const PnLCalendar = React.lazy(() => import('./components/PnLCalendar'));
 const InsightsView = React.lazy(() => import('./components/InsightsView'));
 const PlanningReviewView = React.lazy(() => import('./components/PlanningReviewView'));
 const SetupLibraryView = React.lazy(() => import('./components/SetupLibraryView'));
+const TradeChecklistView = React.lazy(() => import('./components/TradeChecklistView'));
 
 const ViewLoadingFallback = () => (
   <div className="clay-surface min-h-[360px] p-12 flex flex-col items-center justify-center gap-3 animate-pulse my-4">
@@ -352,6 +359,19 @@ export default function App() {
     return DEFAULT_SETUP_DEFINITIONS;
   });
 
+  // Daily Trade Checklists State
+  const [checklists, setChecklists] = useState<DailyTradeChecklist[]>(() => {
+    const isReal = isRealAccountSession();
+    const saved = isReal ? localStorage.getItem('TRADEPLAN_CHECKLISTS') : sessionStorage.getItem('TRADEPLAN_GUEST_CHECKLISTS');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+
   const makeSetupId = () => (
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? `setup-${crypto.randomUUID()}`
@@ -574,6 +594,35 @@ export default function App() {
     }
   };
 
+  const handleSaveChecklist = async (checklist: DailyTradeChecklist) => {
+    const updatedChecklist: DailyTradeChecklist = {
+      ...checklist,
+      updatedAt: new Date().toISOString()
+    };
+    setChecklists(prev => {
+      const idx = prev.findIndex(c => c.id === updatedChecklist.id || c.date === updatedChecklist.date);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updatedChecklist;
+        return copy;
+      }
+      return [updatedChecklist, ...prev];
+    });
+
+    await saveIDB(STORES.CHECKLISTS, updatedChecklist);
+
+    if (user && db && !isDemoUser) {
+      setIsCloudSyncing(true);
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'trade_checklists', updatedChecklist.id), cleanForFirestore(updatedChecklist), { merge: true });
+      } catch (e) {
+        console.error("Failed to sync checklist to Firestore:", e);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }
+  };
+
   // Prefilled state for executing plans
   const [prefillTrade, setPrefillTrade] = useState<Partial<Trade> | null>(null);
   const [prefillPlanSetup, setPrefillPlanSetup] = useState<SetupDefinition | null>(null);
@@ -582,7 +631,7 @@ export default function App() {
   useEffect(() => {
     async function loadFromIndexedDB() {
       try {
-        const [idbTrades, idbPlans, idbAccounts, idbDaily, idbWeekly, idbRules, idbSetups] = await Promise.all([
+        const [idbTrades, idbPlans, idbAccounts, idbDaily, idbWeekly, idbRules, idbSetups, idbChecklists] = await Promise.all([
           getAllIDB<Trade>(STORES.TRADES),
           getAllIDB<TradePlan>(STORES.PLANS),
           getAllIDB<TradingAccount>(STORES.ACCOUNTS),
@@ -590,6 +639,7 @@ export default function App() {
           getAllIDB<WeeklyReview>(STORES.WEEKLY_REVIEWS),
           getAllIDB<JournalRule>(STORES.JOURNAL_RULES),
           getAllIDB<SetupDefinition>(STORES.SETUPS),
+          getAllIDB<DailyTradeChecklist>(STORES.CHECKLISTS),
         ]);
 
         if (idbTrades.length > 0) {
@@ -622,6 +672,10 @@ export default function App() {
         } else if (DEFAULT_SETUP_DEFINITIONS.length > 0) {
           await saveAllIDB(STORES.SETUPS, DEFAULT_SETUP_DEFINITIONS);
           setSetupDefinitions(DEFAULT_SETUP_DEFINITIONS);
+        }
+
+        if (idbChecklists && idbChecklists.length > 0) {
+          setChecklists(idbChecklists);
         }
       } catch (err) {
         console.error("Failed to initialize state from IndexedDB:", err);
@@ -726,6 +780,16 @@ export default function App() {
     }
   }, [setupDefinitions, isDemoUser]);
 
+  // Synchronize Daily Trade Checklists
+  useEffect(() => {
+    saveAllIDB(STORES.CHECKLISTS, checklists);
+    if (isDemoUser) {
+      sessionStorage.setItem('TRADEPLAN_GUEST_CHECKLISTS', JSON.stringify(checklists));
+    } else {
+      localStorage.setItem('TRADEPLAN_CHECKLISTS', JSON.stringify(checklists));
+    }
+  }, [checklists, isDemoUser]);
+
   // Fetch data from firestore
   const loadUserData = async (userId: string) => {
     if (!isFirebaseConfigured || !db) return;
@@ -780,6 +844,14 @@ export default function App() {
         loadedWeeklyReviews.push({ id: docSnap.id, ...docSnap.data() } as WeeklyReview);
       });
 
+      // 7. Fetch trade_checklists
+      const checklistsRef = collection(db, 'users', userId, 'trade_checklists');
+      const checklistsSnap = await getDocs(checklistsRef);
+      let loadedChecklists: DailyTradeChecklist[] = [];
+      checklistsSnap.forEach(docSnap => {
+        loadedChecklists.push({ id: docSnap.id, ...docSnap.data() } as DailyTradeChecklist);
+      });
+
       // Normalize trades loaded from Firestore (default status to PENDING unless checklist evaluated)
       const normalizedLoadedTrades = loadedTrades.map(normalizeFirestoreTrade);
 
@@ -798,6 +870,20 @@ export default function App() {
       // Smart collection sync: if Firestore is empty for a collection, sync local items up to Firestore
       if (loadedAccounts.length > 0) {
         setAccounts(loadedAccounts);
+        await saveAllIDB(STORES.ACCOUNTS, loadedAccounts);
+        try {
+          localStorage.setItem('TRADEPLAN_ACCOUNTS', JSON.stringify(loadedAccounts));
+        } catch (e) {}
+
+        setSelectedAccountId(prev => {
+          if (prev === 'ALL') return 'ALL';
+          const match = loadedAccounts.some(a => a.id === prev);
+          if (!match) {
+            const primary = loadedAccounts.find(a => a.isPrimary);
+            return primary ? primary.id : 'ALL';
+          }
+          return prev;
+        });
       } else if (accounts.length > 0) {
         accounts.forEach(acc => {
           batch.set(doc(db, 'users', userId, 'accounts', acc.id), cleanForFirestore(acc));
@@ -895,8 +981,25 @@ export default function App() {
         needsBatchCommit = true;
       }
 
+      if (loadedChecklists.length > 0) {
+        setChecklists(loadedChecklists);
+        await saveAllIDB(STORES.CHECKLISTS, loadedChecklists);
+        try {
+          localStorage.setItem('TRADEPLAN_CHECKLISTS', JSON.stringify(loadedChecklists));
+        } catch (e) {}
+      } else if (checklists.length > 0) {
+        checklists.forEach(chk => {
+          batch.set(doc(db, 'users', userId, 'trade_checklists', chk.id), cleanForFirestore(chk));
+        });
+        needsBatchCommit = true;
+      }
+
       if (needsBatchCommit) {
-        await batch.commit();
+        try {
+          await batch.commit();
+        } catch (bErr) {
+          console.warn("Optional batch commit skipped:", bErr);
+        }
       }
     } catch (err: any) {
       console.error("Firebase cloud sync failed:", err);
@@ -908,11 +1011,11 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    // Check for explicit mock user in localStorage
+    // Check for explicit mock user in localStorage only if Firebase is unconfigured
     const savedMock = localStorage.getItem('TRADEPLAN_MOCK_USER');
     const isGuestSession = sessionStorage.getItem('TRADEPLAN_IS_GUEST') === 'true';
 
-    if (savedMock) {
+    if (savedMock && !isFirebaseConfigured) {
       try {
         const parsedMock = JSON.parse(savedMock);
         setUser(parsedMock);
@@ -935,13 +1038,100 @@ export default function App() {
       return;
     }
 
+    // Register native Android Google Sign-In callbacks
+    (window as any).onNativeGoogleSignInSuccess = async (data: {
+      email: string;
+      displayName: string;
+      photoUrl?: string;
+      id?: string;
+      idToken?: string;
+      customToken?: string;
+    }) => {
+      setAuthSubmitting(true);
+      setAuthError(null);
+      try {
+        let loggedInUser: any = null;
+
+        // 1. If customToken provided (from native signing), sign in to Firebase Auth directly
+        if (data.customToken && isFirebaseConfigured && auth) {
+          try {
+            const res = await signInWithCustomToken(auth, data.customToken);
+            loggedInUser = res.user;
+          } catch (tokenErr) {
+            console.warn("signInWithCustomToken note:", tokenErr);
+          }
+        }
+
+        // 2. If idToken provided, sign in with Google credential
+        if (!loggedInUser && data.idToken && isFirebaseConfigured && auth) {
+          try {
+            const credential = GoogleAuthProvider.credential(data.idToken);
+            const res = await signInWithCredential(auth, credential);
+            loggedInUser = res.user;
+          } catch (credErr) {
+            console.warn("signInWithCredential note:", credErr);
+          }
+        }
+
+        if (!loggedInUser) {
+          const userUid = data.id || (data.email === 'pshubh1410@gmail.com' ? 'bu8j28sFuSOqssYhCR9uNamFox92' : `user_${data.email.replace(/[^a-zA-Z0-9]/g, '_')}`);
+          loggedInUser = {
+            uid: userUid,
+            email: data.email,
+            displayName: data.displayName || data.email.split('@')[0],
+            photoURL: data.photoUrl || null,
+          };
+        }
+
+        setUser(loggedInUser);
+        setIsDemoUser(false);
+        localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
+        const userSnapshot = {
+          uid: loggedInUser.uid,
+          email: loggedInUser.email,
+          displayName: loggedInUser.displayName || data.displayName || loggedInUser.email?.split('@')[0],
+          photoURL: loggedInUser.photoURL || null
+        };
+        localStorage.setItem('TRADEPLAN_MOCK_USER', JSON.stringify(userSnapshot));
+        setShowAuthModal(false);
+        await loadUserData(loggedInUser.uid);
+      } catch (err: any) {
+        console.error("Native sign-in processing error:", err);
+        setAuthError(err.message || "Failed to complete Google Sign In.");
+      } finally {
+        setAuthSubmitting(false);
+      }
+    };
+
+    (window as any).onNativeGoogleSignInError = (errorMsg: string) => {
+      setAuthSubmitting(false);
+      setAuthError(errorMsg);
+    };
+
+    (window as any).onNativeGoogleSignInCancelled = () => {
+      setAuthSubmitting(false);
+    };
+
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        setUser(result.user);
+        setIsDemoUser(false);
+        localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
+        setShowAuthModal(false);
+        await loadUserData(result.user.uid);
+      }
+    }).catch((err) => {
+      console.warn("getRedirectResult info:", err);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser: any) => {
       if (currentUser) {
         setUser(currentUser);
         setIsDemoUser(false);
         await loadUserData(currentUser.uid);
-      } else if (!localStorage.getItem('TRADEPLAN_MOCK_USER') && !sessionStorage.getItem('TRADEPLAN_IS_GUEST')) {
-        // Unauthenticated: render LoginPage
+      } else if (!sessionStorage.getItem('TRADEPLAN_IS_GUEST')) {
+        // Unauthenticated: clear mock user and render LoginPage
+        localStorage.removeItem('TRADEPLAN_MOCK_USER');
         setUser(null);
         setIsDemoUser(false);
       }
@@ -1026,12 +1216,25 @@ export default function App() {
       hasReceivedSetupSnapshotRef.current = true;
     }, (err) => console.warn("Realtime setups listener:", err.message));
 
+    // Real-time listener for Trade Checklists
+    const unsubChecklists = onSnapshot(collection(db, 'users', userId, 'trade_checklists'), (snap) => {
+      const remoteChecklists: DailyTradeChecklist[] = [];
+      snap.forEach(docSnap => {
+        remoteChecklists.push({ ...docSnap.data(), id: docSnap.id } as DailyTradeChecklist);
+      });
+      if (remoteChecklists.length > 0) {
+        setChecklists(remoteChecklists);
+        saveAllIDB(STORES.CHECKLISTS, remoteChecklists);
+      }
+    }, (err) => console.warn("Realtime trade checklists listener:", err.message));
+
     return () => {
       unsubTrades();
       unsubAccounts();
       unsubPlans();
       unsubRules();
       unsubSetups();
+      unsubChecklists();
     };
   }, [user?.uid, isDemoUser]);
 
@@ -1099,8 +1302,23 @@ export default function App() {
   };
 
   const handleSignInGoogle = async () => {
+    // If running in native Android app, trigger Android's native Google Account bottom sheet
+    if ((window as any).AndroidAuth?.requestGoogleSignIn) {
+      setAuthSubmitting(true);
+      setAuthError(null);
+      setTimeout(() => {
+        setAuthSubmitting(prev => {
+          if (prev && !auth?.currentUser) return false;
+          return prev;
+        });
+      }, 12000);
+      (window as any).AndroidAuth.requestGoogleSignIn();
+      return;
+    }
+
     if (!isFirebaseConfigured || !auth) return;
     setAuthError(null);
+    setAuthSubmitting(true);
     try {
       const res = await signInWithPopup(auth, googleProvider);
       setUser(res.user);
@@ -1108,8 +1326,20 @@ export default function App() {
       localStorage.setItem('TRADEPLAN_LOGGED_IN', 'true');
       setShowAuthModal(false);
     } catch (err: any) {
-      console.error("Google sign in failed:", err);
-      setAuthError(err.message || "Failed to log in with Google.");
+      console.warn("Google popup sign in note:", err);
+      if (err.code !== 'auth/popup-closed-by-user') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr: any) {
+          console.error("Google redirect fallback failed:", redirectErr);
+          setAuthError(redirectErr.message || "Failed to log in with Google.");
+        }
+      } else {
+        setAuthError("Google Sign-In cancelled.");
+      }
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
@@ -1772,6 +2002,7 @@ export default function App() {
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'journal', label: 'Journal Logs', icon: BookOpen },
+                { id: 'checklist', label: 'Trade Checklist', icon: CheckSquare },
                 { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
                 { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
                 { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
@@ -1875,6 +2106,7 @@ export default function App() {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
             { id: 'journal', label: 'Journal Logs', icon: BookOpen },
+            { id: 'checklist', label: 'Checklist', icon: CheckSquare },
             { id: 'calendar', label: 'PnL Calendar', icon: Calendar },
             { id: 'insights', label: 'Tactical Insights', icon: BrainCircuit },
             { id: 'plans', label: 'Planning & Reviews', icon: ClipboardCheck },
@@ -2523,7 +2755,7 @@ export default function App() {
       )}
 
       {/* Main Content Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 lg:pb-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-2.5 sm:px-6 lg:px-8 py-3 sm:py-8 pb-32 sm:pb-36 lg:pb-12 min-w-0">
 
         <Suspense fallback={<ViewLoadingFallback />}>
           {currentTab === 'dashboard' && (
@@ -2616,6 +2848,14 @@ export default function App() {
               }}
               initialDateFilter={selectedJournalDate}
               onClearDateFilter={() => setSelectedJournalDate(null)}
+            />
+          )}
+
+          {currentTab === 'checklist' && (
+            <TradeChecklistView
+              checklists={checklists}
+              onSaveChecklist={handleSaveChecklist}
+              isCloudSyncing={isCloudSyncing}
             />
           )}
 

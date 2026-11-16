@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TradeForgeJournalDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORES = {
   TRADES: 'trades',
@@ -14,6 +14,7 @@ export const STORES = {
   WEEKLY_REVIEWS: 'weekly_reviews',
   JOURNAL_RULES: 'journal_rules',
   SETUPS: 'setups',
+  CHECKLISTS: 'checklists',
 } as const;
 
 export type StoreName = typeof STORES[keyof typeof STORES];
